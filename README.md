@@ -2,10 +2,10 @@
 
 **English** · [繁體中文](README.zh-TW.md)
 
-**Reset your Focusrite Scarlett without unplugging it.**
-When the audio turns into static or vanishes entirely, one hotkey rebuilds the audio stream —
-no reaching behind the desk for the USB cable, no digging through Focusrite Control 2
-to toggle the sample rate.
+## ⚡ Automatically Recover Focusrite Audio
+No need to unplug and reconnect your Focusrite Scarlett.
+
+When audio starts crackling, popping, or cuts out, recover it instantly using a hotkey, the system tray, or automatic detection and recovery. Windows only.
 
 Windows 10 / 11 · Python 3.11+
 Built and tested against the **Scarlett Solo 4th Gen**; works with any Focusrite USB interface.

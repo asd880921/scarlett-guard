@@ -2,9 +2,9 @@
 
 [English](README.md) · **繁體中文**
 
-**Focusrite Scarlett 介面的「軟體版 USB 拔插」工具。**
-聲音突然變成電流音或整個消失時，按一下（或一組熱鍵）就能重建音訊串流 ——
-不必伸手到主機後面拔線，也不必打開 Focusrite Control 2 去切換 Sample Rate。
+## ⚡ 自動恢復 Focusrite 音訊
+無需重新插拔，即可重置 Focusrite Scarlett。
+當音訊出現爆音、雜音或中斷時，可透過快捷鍵、系統匣選單，或由程式自動偵測並恢復音訊。支援 Windows。
 
 Windows 10 / 11 ・ Python 3.11+
 針對 **Scarlett Solo 4th Gen** 開發與實測，任何 Focusrite USB 介面都適用。
