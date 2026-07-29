@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scarlett Guard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 側欄：結構性區域，用較重的材質與其他內容分層 -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M4 20 L9 10 L14 24 L19 8 L24 18 L28 14" stroke="currentColor"
+                  stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">Scarlett Guard</span>
+          <span class="brand-sub" id="brand-version">v1.0.0</span>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item is-active" data-view="status">
+          <span class="nav-glyph">◎</span><span>狀態</span>
+        </button>
+        <button class="nav-item" data-view="detect">
+          <span class="nav-glyph">∿</span><span>自動偵測</span>
+        </button>
+        <button class="nav-item" data-view="settings">
+          <span class="nav-glyph">⚙</span><span>設定</span>
+        </button>
+        <button class="nav-item" data-view="history">
+          <span class="nav-glyph">≡</span><span>紀錄</span>
+        </button>
+        <button class="nav-item" data-view="maintenance">
+          <span class="nav-glyph">⌫</span><span>維護</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="pill" id="elevation-pill" data-tone="idle">
+          <span class="dot"></span><span id="elevation-text">檢查權限中…</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主要內容 -->
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 id="view-title">狀態</h1>
+          <p id="view-sub">Focusrite 裝置的即時狀況與一鍵重置</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-quiet" id="btn-refresh" title="重新整理裝置狀態">
+            <span class="btn-glyph">↻</span>重新整理
+          </button>
+          <button class="btn btn-quiet" id="btn-minimise" title="收進系統匣">
+            收進系統匣
+          </button>
+        </div>
+      </header>
+
+      <div class="scroll" id="scroll">
+        <div class="scroll-inner">
+
+          <!-- 未提權時的警示，僅在需要時出現 -->
+          <div class="banner" id="elevation-banner" hidden>
+            <div class="banner-body">
+              <strong>需要系統管理員權限</strong>
+              <span>重置 PnP 裝置必須提權執行，否則重置按鈕無法運作。</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-elevate">以管理員重新啟動</button>
+          </div>
+
+          <div class="banner banner-warn" id="suspend-banner" hidden>
+            <div class="banner-body">
+              <strong>自動復原已暫停</strong>
+              <span id="suspend-detail">短時間內重置次數過多，已暫停以避免無限迴圈。</span>
+            </div>
+            <button class="btn btn-sm" id="btn-resume-auto">重新啟用</button>
+          </div>
+
+          <!-- ============ 狀態 ============ -->
+          <section class="view is-active" data-view="status">
+            <div class="hero card">
+              <div class="hero-status">
+                <div class="status-ring" id="status-ring" data-tone="idle">
+                  <div class="status-core"></div>
+                </div>
+                <div class="hero-text">
+                  <h2 id="device-name">正在偵測裝置…</h2>
+                  <p id="device-id" class="mono">—</p>
+                  <div class="chips" id="device-chips"></div>
+                </div>
+              </div>
+
+              <button class="reset-button" id="btn-reset">
+                <span class="reset-label">立即重置裝置</span>
+                <span class="reset-sub" id="reset-hint">等同於拔掉再插回 USB</span>
+                <span class="reset-spinner" aria-hidden="true"></span>
+              </button>
+            </div>
+
+            <div class="grid grid-3">
+              <div class="card stat">
+                <span class="stat-label">上次重置</span>
+                <span class="stat-value" id="stat-last">—</span>
+                <span class="stat-foot" id="stat-last-iso">尚無紀錄</span>
+              </div>
+              <div class="card stat">
+                <span class="stat-label">24 小時內</span>
+                <span class="stat-value" id="stat-24h">0<small> 次</small></span>
+                <span class="stat-foot" id="stat-7d">7 天內 0 次</span>
+              </div>
+              <div class="card stat">
+                <span class="stat-label">平均間隔</span>
+                <span class="stat-value" id="stat-gap">—</span>
+                <span class="stat-foot">兩次重置之間</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h3>驅動資訊</h3>
+                <span class="card-note" id="driver-mode">—</span>
+              </div>
+              <dl class="kv" id="driver-kv"></dl>
+              <p class="hint" id="driver-hint"></p>
+            </div>
+          </section>
+
+          <!-- ============ 自動偵測 ============ -->
+          <section class="view" data-view="detect">
+            <div class="card">
+              <div class="card-head">
+                <h3>音訊監聽</h3>
+                <div class="switch" id="sw-monitor" role="switch" tabindex="0"
+                     aria-label="啟用音訊監聽"><span class="knob"></span></div>
+              </div>
+              <p class="hint">
+                監聽 Scarlett 的<strong>錄音端點</strong>而非播放 loopback —— 錄音端拿到的是
+                ADC 的真實取樣，才能反映硬體那一側是否還活著。
+              </p>
+              <p class="alert" id="monitor-error" hidden></p>
+
+              <div class="meterbox" id="meterbox">
+                <div class="meter-head">
+                  <span id="monitor-device">未啟用</span>
+                  <span class="mono" id="monitor-readout">—</span>
+                </div>
+                <div class="wave" id="wave"><canvas id="wave-canvas"></canvas></div>
+                <div class="meter-rows">
+                  <div class="meter-row">
+                    <span>音量</span>
+                    <div class="bar"><i id="bar-rms"></i><u id="bar-baseline"></u></div>
+                    <span class="mono" id="val-rms">—</span>
+                  </div>
+                  <div class="meter-row">
+                    <span>過零率</span>
+                    <div class="bar"><i id="bar-zcr"></i><u id="bar-zcr-th"></u></div>
+                    <span class="mono" id="val-zcr">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <h3>自動復原</h3>
+                <div class="switch" id="sw-auto" role="switch" tabindex="0"
+                     aria-label="偵測到異常時自動重置"><span class="knob"></span></div>
+              </div>
+              <p class="hint">
+                偵測到異常時自動執行重置。這些偵測是<strong>啟發式規則，不是保證</strong> ——
+                建議先只開監聽、觀察幾天儀表與紀錄，確認不會誤判之後再打開自動復原。
+              </p>
+              <div class="rowset">
+                <div class="row">
+                  <div class="row-text"><strong>冷卻時間</strong><span>兩次自動重置之間的最短間隔</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-cooldown" min="5" max="300" step="5" />
+                    <span class="mono slider-val" id="val-cooldown">—</span>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><strong>每小時上限</strong><span>超過就暫停自動復原，避免無限迴圈</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-maxreset" min="1" max="20" step="1" />
+                    <span class="mono slider-val" id="val-maxreset">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><h3>偵測器</h3></div>
+
+              <div class="detector" data-detector="stall">
+                <div class="detector-head">
+                  <div class="row-text">
+                    <strong>串流凍結（stall）</strong>
+                    <span>音訊回呼停止進來，代表 driver 的 stream 時鐘已停。最可靠的訊號。</span>
+                  </div>
+                  <div class="switch sm" id="sw-stall" role="switch" tabindex="0"><span class="knob"></span></div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><span>判定時間</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-stall" min="0.5" max="10" step="0.5" />
+                    <span class="mono slider-val" id="val-stall">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="detector" data-detector="silence">
+                <div class="detector-head">
+                  <div class="row-text">
+                    <strong>訊號消失（silence）</strong>
+                    <span>連續位元級全零。類比 ADC 正常時永遠有噪音底，不可能長時間輸出精確的零。</span>
+                  </div>
+                  <div class="switch sm" id="sw-silence" role="switch" tabindex="0"><span class="knob"></span></div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><span>持續時間</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-silence" min="2" max="60" step="1" />
+                    <span class="mono slider-val" id="val-silence">—</span>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><span>靜音門檻</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-silencefloor" min="-220" max="-100" step="5" />
+                    <span class="mono slider-val" id="val-silencefloor">—</span>
+                  </div>
+                </div>
+                <p class="hint subtle">
+                  門檻必須遠低於實際噪音底（本機實測約 −104 dB），否則正常待機就會誤判。
+                  另外若你在 Windows 中將此輸入靜音，也會產生全零而被判定為異常。
+                </p>
+              </div>
+
+              <div class="detector" data-detector="noise">
+                <div class="detector-head">
+                  <div class="row-text">
+                    <strong>電流音（noise）</strong>
+                    <span>音量高出噪音底一大截且過零率極高。人聲與樂器的過零率遠低於此。</span>
+                  </div>
+                  <div class="switch sm" id="sw-noise" role="switch" tabindex="0"><span class="knob"></span></div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><span>高出噪音底</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-noisemargin" min="6" max="40" step="1" />
+                    <span class="mono slider-val" id="val-noisemargin">—</span>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><span>過零率門檻</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-noisezcr" min="0.05" max="0.6" step="0.01" />
+                    <span class="mono slider-val" id="val-noisezcr">—</span>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><span>持續時間</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-noiseseconds" min="0.3" max="10" step="0.1" />
+                    <span class="mono slider-val" id="val-noiseseconds">—</span>
+                  </div>
+                </div>
+                <p class="hint subtle">
+                  最容易誤判的一個。錄製 hi-hat、破音吉他或白噪素材時可能觸發，請依實測調整。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ 設定 ============ -->
+          <section class="view" data-view="settings">
+            <div class="card">
+              <div class="card-head"><h3>全域熱鍵</h3>
+                <div class="switch" id="sw-hotkey" role="switch" tabindex="0"><span class="knob"></span></div>
+              </div>
+              <p class="hint">在任何前景視窗（含全螢幕 DAW）按下即可重置，不必切回本程式。</p>
+              <div class="row">
+                <div class="row-text"><strong>組合鍵</strong><span>pynput 格式，例如 &lt;ctrl&gt;+&lt;alt&gt;+r</span></div>
+                <div class="input-wrap">
+                  <input type="text" id="cfg-hotkey" class="mono" spellcheck="false" />
+                  <span class="input-note" id="hotkey-note"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><h3>監聽裝置</h3></div>
+              <div class="row">
+                <div class="row-text"><strong>錄音端點</strong><span>留空為自動選擇 Focusrite</span></div>
+                <div class="input-wrap">
+                  <select id="cfg-inputdev"></select>
+                </div>
+              </div>
+              <div class="row">
+                <div class="row-text"><strong>取樣率</strong><span>需與裝置目前設定相符</span></div>
+                <div class="input-wrap">
+                  <select id="cfg-samplerate">
+                    <option value="0">自動（跟隨裝置）</option>
+                    <option value="44100">44100 Hz</option>
+                    <option value="48000">48000 Hz</option>
+                    <option value="88200">88200 Hz</option>
+                    <option value="96000">96000 Hz</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row">
+                <div class="row-text"><strong>區塊大小</strong><span>越小反應越快，但 CPU 負擔略高</span></div>
+                <div class="input-wrap">
+                  <select id="cfg-blocksize">
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                    <option value="1024">1024</option>
+                    <option value="2048">2048</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><h3>行為</h3></div>
+              <div class="rowset">
+                <div class="row">
+                  <div class="row-text"><strong>開機自動啟動</strong><span>以工作排程器建立高權限登入工作，不會跳 UAC</span></div>
+                  <div class="switch" id="sw-autostart" role="switch" tabindex="0"><span class="knob"></span></div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><strong>關閉視窗時收進系統匣</strong><span>保持常駐，熱鍵才會持續有效</span></div>
+                  <div class="switch" id="sw-closetray" role="switch" tabindex="0"><span class="knob"></span></div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><strong>重置後顯示系統通知</strong><span>由系統匣圖示發出</span></div>
+                  <div class="switch" id="sw-notify" role="switch" tabindex="0"><span class="knob"></span></div>
+                </div>
+                <div class="row">
+                  <div class="row-text"><strong>重置後緩衝時間</strong><span>等待裝置與驅動穩定再恢復監聽</span></div>
+                  <div class="slider-wrap">
+                    <input type="range" id="cfg-settle" min="0" max="15" step="0.5" />
+                    <span class="mono slider-val" id="val-settle">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><h3>資料位置</h3></div>
+              <dl class="kv" id="paths-kv"></dl>
+              <div class="btn-row">
+                <button class="btn btn-quiet" id="btn-open-data">開啟資料夾</button>
+                <button class="btn btn-quiet" id="btn-reset-settings">回復預設設定</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ 紀錄 ============ -->
+          <section class="view" data-view="history">
+            <div class="card">
+              <div class="card-head">
+                <h3>事件紀錄</h3>
+                <button class="btn btn-quiet btn-sm" id="btn-clear-history">清空</button>
+              </div>
+              <p class="hint">
+                以 JSON Lines 保存，可直接用文字工具或 pandas 分析
+                「到底多久壞一次、是否真的和 CPU 負載相關」。
+              </p>
+              <ul class="timeline" id="timeline"></ul>
+            </div>
+          </section>
+
+          <!-- ============ 維護 ============ -->
+          <section class="view" data-view="maintenance">
+            <div class="card">
+              <div class="card-head">
+                <h3>幽靈裝置</h3>
+                <span class="card-note" id="ghost-count">—</span>
+              </div>
+              <p class="hint">
+                反覆插拔與重裝驅動累積下來的殘留節點（狀態為 Unknown）。
+                <strong>尚未證實與斷音問題有因果關係</strong>，但清乾淨可以排除干擾變因，
+                讓後續測試的結論更可信。
+              </p>
+              <ul class="ghostlist" id="ghostlist"></ul>
+              <div class="btn-row">
+                <button class="btn btn-quiet" id="btn-scan-ghosts">重新掃描</button>
+                <button class="btn btn-danger" id="btn-remove-ghosts" disabled>移除選取項目</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><h3>所有 Focusrite 裝置節點</h3></div>
+              <div class="table-scroll">
+                <table class="table" id="devtable">
+                  <thead><tr><th>狀態</th><th>名稱</th><th>類別</th><th>Instance ID</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <div class="scrim" id="scrim" hidden>
+    <div class="dialog card" id="dialog" role="dialog" aria-modal="true">
+      <h3 id="dialog-title">確認</h3>
+      <p id="dialog-body"></p>
+      <div class="btn-row end">
+        <button class="btn btn-quiet" id="dialog-cancel">取消</button>
+        <button class="btn btn-danger" id="dialog-confirm">確認移除</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

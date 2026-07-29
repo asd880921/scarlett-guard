@@ -1,0 +1,127 @@
+"""系統匣圖示。
+
+視窗收起來之後，這就是使用者唯一的入口，所以最重要的動作（立即重置）
+必須在選單第一項、一步可達。
+"""
+from __future__ import annotations
+
+import threading
+from typing import Callable
+
+from PIL import Image, ImageDraw
+
+try:
+    import pystray
+
+    _PYSTRAY_ERROR = ""
+except Exception as exc:  # pragma: no cover
+    pystray = None  # type: ignore[assignment]
+    _PYSTRAY_ERROR = str(exc)
+
+
+# 狀態色 —— 對應 UI 裡的同一組語意色
+_COLORS = {
+    "ok": (48, 209, 88),
+    "busy": (255, 159, 10),
+    "error": (255, 69, 58),
+    "idle": (142, 142, 147),
+}
+
+
+def _make_icon(state: str) -> Image.Image:
+    """畫一個帶狀態小圓點的圓角方塊。"""
+    size = 64
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    draw.rounded_rectangle((4, 4, size - 4, size - 4), radius=14, fill=(28, 28, 30, 255))
+    # 一個代表訊號的正弦狀折線
+    points = [(16, 40), (24, 24), (32, 44), (40, 22), (48, 36)]
+    draw.line(points, fill=(235, 235, 245, 235), width=4, joint="curve")
+
+    colour = _COLORS.get(state, _COLORS["idle"])
+    draw.ellipse((size - 26, size - 26, size - 6, size - 6), fill=(*colour, 255))
+    return image
+
+
+class Tray:
+    def __init__(
+        self,
+        on_reset: Callable[[], None],
+        on_show: Callable[[], None],
+        on_toggle_monitor: Callable[[bool], None],
+        on_quit: Callable[[], None],
+        monitor_enabled: Callable[[], bool],
+    ) -> None:
+        self._on_reset = on_reset
+        self._on_show = on_show
+        self._on_toggle_monitor = on_toggle_monitor
+        self._on_quit = on_quit
+        self._monitor_enabled = monitor_enabled
+        self._icon = None
+        self._thread: threading.Thread | None = None
+        self._state = "ok"
+
+    @property
+    def available(self) -> bool:
+        return pystray is not None
+
+    def start(self) -> None:
+        if pystray is None:
+            return
+        menu = pystray.Menu(
+            pystray.MenuItem("立即重置裝置", self._reset, default=True),
+            pystray.MenuItem("開啟 Scarlett Guard", self._show),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "自動偵測異常",
+                self._toggle_monitor,
+                checked=lambda _: self._monitor_enabled(),
+            ),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("結束", self._quit),
+        )
+        self._icon = pystray.Icon(
+            "scarlett_guard", _make_icon(self._state), "Scarlett Guard", menu
+        )
+        self._thread = threading.Thread(target=self._icon.run, name="tray", daemon=True)
+        self._thread.start()
+
+    def set_state(self, state: str) -> None:
+        if state == self._state or self._icon is None:
+            return
+        self._state = state
+        try:
+            self._icon.icon = _make_icon(state)
+        except Exception:
+            pass
+
+    def notify(self, title: str, message: str) -> None:
+        if self._icon is None:
+            return
+        try:
+            self._icon.notify(message, title)
+        except Exception:
+            # 部分 Windows 設定下（例如關閉通知）會丟例外，不該影響主流程
+            pass
+
+    def stop(self) -> None:
+        if self._icon is not None:
+            try:
+                self._icon.stop()
+            except Exception:
+                pass
+            self._icon = None
+
+    # --- pystray 回呼 ---
+    def _reset(self, *_args) -> None:
+        threading.Thread(target=self._on_reset, daemon=True).start()
+
+    def _show(self, *_args) -> None:
+        self._on_show()
+
+    def _toggle_monitor(self, *_args) -> None:
+        self._on_toggle_monitor(not self._monitor_enabled())
+
+    def _quit(self, *_args) -> None:
+        self._on_quit()
