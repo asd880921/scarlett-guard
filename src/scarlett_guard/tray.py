@@ -70,8 +70,11 @@ class Tray:
         if pystray is None:
             return
         menu = pystray.Menu(
-            pystray.MenuItem("立即重置裝置", self._reset, default=True),
-            pystray.MenuItem("開啟 Scarlett Guard", self._show),
+            # 重置刻意「不」設為 default：預設動作會綁到左鍵雙擊，
+            # 而重置會中斷音訊約三秒，誤觸的代價太高。
+            # 雙擊留給開啟視窗這個無害的動作，快速重置則交給全域熱鍵。
+            pystray.MenuItem("立即重置裝置", self._reset),
+            pystray.MenuItem("開啟 Scarlett Guard", self._show, default=True),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 "自動偵測異常",
