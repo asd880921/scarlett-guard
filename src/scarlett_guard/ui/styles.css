@@ -354,6 +354,16 @@ body::before {
   background: var(--grey);
   transition: background var(--spring), transform var(--spring);
 }
+/* 裝置查詢進行中：緩慢呼吸，明確表示「還在查」而不是「查不到」 */
+.status-ring.is-loading .status-core { animation: breathe 1.6s ease-in-out infinite; }
+@keyframes breathe {
+  0%, 100% { opacity: .35; transform: scale(.82); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-ring.is-loading .status-core { animation: none; opacity: .6; }
+}
+
 .status-ring[data-tone="ok"]    { background: color-mix(in srgb, var(--green) 20%, transparent); }
 .status-ring[data-tone="ok"]    .status-core { background: var(--green); }
 .status-ring[data-tone="busy"]  { background: color-mix(in srgb, var(--amber) 20%, transparent); }

@@ -242,6 +242,19 @@
 
   // ================================================================ 渲染：狀態
 
+  /** 權限狀態不需要等裝置查詢，bootstrap 一回來就能上。 */
+  function applyElevation(elevated) {
+    state.elevated = !!elevated;
+    const pill = $('#elevation-pill');
+    pill.dataset.tone = elevated ? 'ok' : 'error';
+    $('#elevation-text').textContent = elevated ? t('elev.admin') : t('elev.none');
+    $('#elevation-banner').hidden = !!elevated;
+    if (!elevated) {
+      $('#btn-reset').disabled = true;
+      $('#reset-hint').textContent = t('reset.sub.noadmin');
+    }
+  }
+
   function renderDevice(data) {
     if (!data) return;
     state.device = data;
@@ -901,8 +914,8 @@
     state.history = data.history || [];
 
     applyLanguage(state.config.language || 'auto');
+    applyElevation(data.elevated);
 
-    renderDevice(data.device);
     renderStats(data.stats);
     renderMonitor(data.monitor);
     renderHistory(state.history);
@@ -922,7 +935,15 @@
     if (data.hotkey_error) {
       toast(t('toast.hotkeyfail'), data.hotkey_error, 'error', 8000);
     }
-    trace('boot: done');
+    trace('boot: fast data rendered');
+
+    // 裝置狀態要跑 PowerShell（約 2–3 秒），刻意不 await ——
+    // 其餘頁面的資料已經在畫面上了，沒有理由陪它一起等。
+    $('#status-ring').classList.add('is-loading');
+    refreshDevice(true).finally(() => {
+      $('#status-ring').classList.remove('is-loading');
+      trace('boot: device rendered');
+    });
   }
 
   // 前端例外若沒有出口，畫面只會安靜地半殘 —— 一律回報到後端紀錄並提示使用者

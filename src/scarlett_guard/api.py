@@ -64,10 +64,15 @@ class Api:
     # ------------------------------------------------------------------
     @_safe
     def bootstrap(self) -> dict[str, Any]:
-        """開頁時一次拿齊所有資料，避免前端連發五六個請求。"""
+        """開頁時一次拿齊「立即可得」的資料。
+
+        刻意**不**包含裝置狀態：那需要跑 PowerShell，要花兩三秒。
+        把它放進來會讓設定、紀錄、路徑這些本來就在記憶體裡的資料
+        一起被卡住，整個 UI 空白好幾秒。前端拿到這包之後再自己去要裝置狀態。
+        """
         return {
             "ok": True,
-            "device": self._service.snapshot(force=True),
+            "device_pending": True,
             "config": self._service.config.as_dict(),
             "monitor": self._service.monitor_state(),
             "stats": self._service.history.stats(),

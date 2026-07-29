@@ -14,13 +14,15 @@ from .api import Api
 from .i18n import t
 from .paths import ui_dir
 from .service import GuardService
+from .single_instance import SingleInstance
 from .tray import Tray
 
 _WINDOW_TITLE = "Scarlett Guard"
 
 
 class Application:
-    def __init__(self, start_hidden: bool = False) -> None:
+    def __init__(self, start_hidden: bool = False, instance: SingleInstance | None = None) -> None:
+        self.instance = instance
         self.service = GuardService()
         self.api = Api(self.service)
         self.window: Any = None
@@ -56,6 +58,10 @@ class Application:
             monitor_enabled=lambda: bool(self.service.config.get("monitor_enabled")),
         )
         self.tray.start()
+
+        # 之後有人再點捷徑時，把這扇視窗叫出來，而不是開第二份
+        if self.instance is not None:
+            self.instance.listen(self._show_window)
 
         threading.Thread(target=self._poll_loop, name="poll", daemon=True).start()
 
@@ -104,6 +110,8 @@ class Application:
             self.service.shutdown()
         except Exception:
             pass
+        if self.instance is not None:
+            self.instance.release()
         if self.tray is not None:
             self.tray.stop()
         try:
@@ -187,9 +195,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    start_hidden = args.tray or False
-    app = Application(start_hidden=start_hidden)
-    app.run()
+    # 已經有一份在跑就把它的視窗叫出來，自己安靜退出。
+    # 使用者重複點捷徑時想看到的是視窗，不是錯誤訊息。
+    instance = SingleInstance()
+    if not instance.acquire():
+        instance.signal_existing()
+        return
+
+    app = Application(start_hidden=args.tray or False, instance=instance)
+    try:
+        app.run()
+    finally:
+        instance.release()
 
 
 __all__ = ["Application", "main", "elevation"]

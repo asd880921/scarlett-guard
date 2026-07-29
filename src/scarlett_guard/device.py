@@ -317,15 +317,98 @@ def wait_until_present(instance_id: str, timeout: float = 15.0) -> bool:
     return False
 
 
+# 單次取得「裝置清單 + 主要裝置的驅動屬性」。
+#
+# 成本幾乎全在 PowerShell 的行程啟動（每次約 2 秒），不在查詢本身，
+# 所以把原本三次呼叫（list_devices、find_primary_device 內部再查一次、
+# driver_info）合併成一支腳本，是這裡唯一有意義的最佳化。
+_SNAPSHOT_SCRIPT = """
+$devs = Get-PnpDevice | Where-Object {
+  $_.InstanceId -like '*VID_1235*' -or
+  $_.InstanceId -like 'FOCUSRITEUSB*' -or
+  $_.InstanceId -like '*FOCUSRITE*' -or
+  $_.FriendlyName -like '*Focusrite*' -or
+  $_.FriendlyName -like '*Scarlett*'
+} | Select-Object InstanceId, FriendlyName, Status, Class, Problem
+
+$roots = @($devs | Where-Object {
+  $_.InstanceId -like 'USB\\VID_1235*' -and $_.InstanceId -notlike '*&MI_*'
+})
+$primary = $roots | Where-Object { $_.Status -eq 'OK' } | Select-Object -First 1
+if (-not $primary) { $primary = $roots | Select-Object -First 1 }
+if (-not $primary) {
+  $primary = $devs | Where-Object { $_.Status -eq 'OK' -and $_.Class -ne 'AudioEndpoint' } |
+             Select-Object -First 1
+}
+
+$driver = @{}
+if ($primary) {
+  foreach ($k in 'DEVPKEY_Device_DriverVersion','DEVPKEY_Device_DriverProvider',
+                 'DEVPKEY_Device_DriverDate','DEVPKEY_Device_Manufacturer') {
+    $v = (Get-PnpDeviceProperty -InstanceId $primary.InstanceId -KeyName $k `
+          -ErrorAction SilentlyContinue).Data
+    if ($v) { $driver[$k] = [string]$v }
+  }
+}
+
+@{
+  devices = @($devs)
+  primary = if ($primary) { $primary.InstanceId } else { '' }
+  driver  = $driver
+} | ConvertTo-Json -Depth 4 -Compress
+"""
+
+
 def snapshot(preferred_instance_id: str = "") -> dict[str, Any]:
     """給 UI 用的一次性完整狀態。"""
-    devices = list_devices()
-    primary = find_primary_device(preferred_instance_id)
+    devices: list[PnpDevice] = []
+    primary_id = ""
+    raw_driver: dict[str, Any] = {}
+
+    try:
+        out = _run_powershell(_SNAPSHOT_SCRIPT, timeout=60.0).strip()
+        data = json.loads(out) if out else {}
+    except (RuntimeError, json.JSONDecodeError, subprocess.TimeoutExpired, OSError):
+        data = {}
+
+    items = data.get("devices") or []
+    if isinstance(items, dict):
+        items = [items]
+    for item in items:
+        devices.append(
+            PnpDevice(
+                instance_id=str(item.get("InstanceId") or ""),
+                friendly_name=str(item.get("FriendlyName") or "（無名稱）"),
+                status=str(item.get("Status") or "Unknown"),
+                device_class=str(item.get("Class") or ""),
+                problem_code=str(item.get("Problem") or ""),
+            )
+        )
+    primary_id = str(data.get("primary") or "")
+    raw_driver = data.get("driver") or {}
+
+    # 使用者若指定了裝置，以指定的為準
+    primary: PnpDevice | None = None
+    if preferred_instance_id:
+        for dev in devices:
+            if dev.instance_id.upper() == preferred_instance_id.upper():
+                primary = dev
+                break
+    if primary is None and primary_id:
+        for dev in devices:
+            if dev.instance_id == primary_id:
+                primary = dev
+                break
+
     ghosts = [d.to_dict() for d in devices if d.is_ghost]
-    info = driver_info(primary.instance_id) if primary else {}
     return {
         "primary": primary.to_dict() if primary else None,
-        "driver": info,
+        "driver": {
+            "driver_version": raw_driver.get("DEVPKEY_Device_DriverVersion", ""),
+            "driver_provider": raw_driver.get("DEVPKEY_Device_DriverProvider", ""),
+            "driver_date": (raw_driver.get("DEVPKEY_Device_DriverDate", "") or "")[:10],
+            "manufacturer": raw_driver.get("DEVPKEY_Device_Manufacturer", ""),
+        },
         "devices": [d.to_dict() for d in devices],
         "ghost_count": len(ghosts),
         "ghosts": ghosts,
