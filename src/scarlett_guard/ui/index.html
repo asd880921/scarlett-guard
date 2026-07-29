@@ -318,9 +318,21 @@
                 </div>
               </div>
               <div class="row">
-                <div class="row-text"><strong>區塊大小</strong><span>越小反應越快，但 CPU 負擔略高</span></div>
+                <div class="row-text">
+                  <strong>監聽區塊大小</strong>
+                  <span>越小偵測反應越快，CPU 負擔略高。這是<strong>本程式擷取音訊</strong>的區塊，
+                        不是 Focusrite 的 ASIO Buffer Size</span>
+                </div>
                 <div class="input-wrap">
                   <select id="cfg-blocksize">
+                    <option value="0">自動（交給驅動決定）</option>
+                    <option value="16">16</option>
+                    <option value="32">32</option>
+                    <option value="64">64</option>
+                    <option value="96">96</option>
+                    <option value="128">128</option>
+                    <option value="160">160</option>
+                    <option value="192">192</option>
                     <option value="256">256</option>
                     <option value="512">512</option>
                     <option value="1024">1024</option>
@@ -328,6 +340,11 @@
                   </select>
                 </div>
               </div>
+              <p class="hint subtle">
+                Focusrite 自己的 ASIO Buffer Size 只能在 Focusrite Control 2 的 Device Settings 裡改，
+                沒有公開 API 可供外部程式設定 —— 本程式改用 <code>pnputil</code> 重置裝置達成同樣的
+                「重建 stream」效果，不需要去動那個設定。
+              </p>
             </div>
 
             <div class="card">

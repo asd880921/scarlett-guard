@@ -157,7 +157,8 @@ class AudioMonitor:
             samplerate = int(self._config.get("monitor_samplerate") or 0)
             if not samplerate:
                 samplerate = device.get("default_samplerate") or 48000
-            blocksize = int(self._config.get("monitor_blocksize", 1024))
+            # 0 = 交給 PortAudio 挑選最合適的區塊大小
+            blocksize = max(0, int(self._config.get("monitor_blocksize", 1024) or 0))
             # Solo 的兩個輸入分別是麥克風與樂器，兩軌都要看，回呼裡再取平均
             channels = max(1, min(2, int(device.get("channels", 1) or 1)))
 
