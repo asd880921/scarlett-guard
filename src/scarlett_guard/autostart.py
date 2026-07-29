@@ -9,6 +9,7 @@ import locale
 import subprocess
 from pathlib import Path
 
+from .i18n import t
 from .paths import pythonw_exe, project_root
 
 TASK_NAME = "ScarlettGuard"
@@ -62,9 +63,9 @@ def enable() -> tuple[bool, str]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
     if proc.returncode == 0:
-        return True, "已設定為開機自動啟動（以系統管理員權限）"
+        return True, t("auto.enabled")
     detail = (proc.stderr or proc.stdout or "").strip()
-    return False, f"設定失敗：{detail}"
+    return False, t("auto.enablefail", detail=detail)
 
 
 def disable() -> tuple[bool, str]:
@@ -73,6 +74,6 @@ def disable() -> tuple[bool, str]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, str(exc)
     if proc.returncode == 0:
-        return True, "已取消開機自動啟動"
+        return True, t("auto.disabled")
     detail = (proc.stderr or proc.stdout or "").strip()
-    return False, f"取消失敗：{detail}"
+    return False, t("auto.disablefail", detail=detail)

@@ -5,6 +5,8 @@
  *  - 視圖切換用彈簧曲線的位移＋淡入，而不是等長的線性過場。
  *  - 儀表每 100ms 由 Python 推送一次，畫布用 requestAnimationFrame 補間，
  *    讓每幀的位移小於感知門檻，不會頻閃。
+ *
+ * 文案一律經過 i18n.js 的 t()；靜態文字用 HTML 上的 data-i18n 標記。
  */
 (() => {
   'use strict';
@@ -12,6 +14,7 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const t = (key, params) => window.I18N.t(key, params);
 
   const state = {
     config: {},
@@ -19,8 +22,11 @@
     monitor: {},
     stats: {},
     ghosts: [],
+    history: [],
+    inputDevices: [],
+    autostart: false,
     busy: false,
-    ready: false,
+    view: 'status',
   };
 
   // ================================================================ 工具
@@ -32,7 +38,7 @@
   async function call(method, ...args) {
     const bridge = api();
     if (!bridge || typeof bridge[method] !== 'function') {
-      return { ok: false, message: `橋接尚未就緒：${method}` };
+      return { ok: false, message: t('toast.bridge', { method }) };
     }
     try {
       return await bridge[method](...args);
@@ -69,25 +75,66 @@
 
   function fmtSeconds(value) {
     const n = Number(value);
-    return Number.isInteger(n) ? `${n} 秒` : `${n.toFixed(1)} 秒`;
+    return `${Number.isInteger(n) ? n : n.toFixed(1)}s`;
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ================================================================ 語言
+
+  function applyLanguage(code) {
+    window.I18N.setLanguage(code);
+    window.I18N.apply();
+    // 動態產生的內容不受 data-i18n 影響，必須自己重畫一次
+    renderViewHeader();
+    if (state.device) renderDevice(state.device);
+    if (state.stats) renderStats(state.stats);
+    if (state.monitor) renderMonitor(state.monitor);
+    renderHistory(state.history);
+    renderGhosts();
+    renderInputDevices(state.inputDevices);
+    renderSliders();
+    renderLanguageSelect();
+  }
+
+  function renderLanguageSelect() {
+    const select = $('#cfg-language');
+    if (!select) return;
+    const value = state.config.language || 'auto';
+    select.innerHTML = '';
+    const auto = document.createElement('option');
+    auto.value = 'auto';
+    auto.textContent = t('lang.auto');
+    select.appendChild(auto);
+    window.I18N.LANGUAGES.forEach((lang) => {
+      const option = document.createElement('option');
+      option.value = lang.code;
+      option.textContent = lang.label;
+      select.appendChild(option);
+    });
+    select.value = value;
   }
 
   // ================================================================ 視圖切換
 
-  const VIEW_META = {
-    status: ['狀態', 'Focusrite 裝置的即時狀況與一鍵重置'],
-    detect: ['自動偵測', '監聽音訊串流，異常時自動復原'],
-    settings: ['設定', '熱鍵、監聽裝置與常駐行為'],
-    history: ['紀錄', '每一次異常與重置的完整軌跡'],
-    maintenance: ['維護', '幽靈裝置清理與節點總覽'],
-  };
+  const VIEWS = ['status', 'detect', 'settings', 'history', 'maintenance'];
+
+  function renderViewHeader() {
+    $('#view-title').textContent = t(`view.${state.view}.title`);
+    $('#view-sub').textContent = t(`view.${state.view}.sub`);
+  }
 
   function switchView(name) {
+    if (!VIEWS.includes(name)) return;
+    state.view = name;
     $$('.nav-item').forEach((btn) => btn.classList.toggle('is-active', btn.dataset.view === name));
-
-    const [title, sub] = VIEW_META[name] || ['', ''];
-    $('#view-title').textContent = title;
-    $('#view-sub').textContent = sub;
+    renderViewHeader();
 
     $$('.view').forEach((view) => {
       const active = view.dataset.view === name;
@@ -142,7 +189,6 @@
       syncSwitches();
       renderSliders();
     }
-    (result?.messages || []).forEach((msg) => msg && toast(msg, '', 'info', 2600));
   }, 260);
 
   function setConfig(key, value, immediate = false) {
@@ -152,7 +198,6 @@
     if (immediate) {
       call('update_settings', { [key]: value }).then((result) => {
         if (result && result.config) state.config = result.config;
-        (result?.messages || []).forEach((msg) => msg && toast(msg, '', 'info', 2600));
       });
     } else {
       pushSettings({ [key]: value });
@@ -176,8 +221,8 @@
     else if (primary) tone = 'error';
     ring.dataset.tone = tone;
 
-    $('#device-name').textContent = primary ? primary.friendly_name : '找不到 Focusrite 裝置';
-    $('#device-id').textContent = primary ? primary.instance_id : '請確認 USB 已連接';
+    $('#device-name').textContent = primary ? primary.friendly_name : t('status.notfound');
+    $('#device-id').textContent = primary ? primary.instance_id : t('status.notfound.sub');
 
     const addChip = (text, chipTone) => {
       const chip = document.createElement('span');
@@ -187,59 +232,63 @@
       chips.appendChild(chip);
     };
 
-    if (primary) addChip(primary.is_present ? '裝置在線' : `離線（${primary.status}）`,
-                         primary.is_present ? 'ok' : 'error');
-    addChip(data.uses_focusrite_driver ? 'Focusrite 專屬驅動' : 'Windows 內建 UAC2 驅動',
-            data.uses_focusrite_driver ? 'warn' : 'ok');
-    addChip(data.elevated ? '已提權' : '未提權', data.elevated ? 'ok' : 'error');
-    if (data.ghost_count > 0) addChip(`${data.ghost_count} 個幽靈裝置`, 'warn');
+    if (primary) {
+      addChip(
+        primary.is_present ? t('chip.online') : t('chip.offline', { status: primary.status }),
+        primary.is_present ? 'ok' : 'error'
+      );
+    }
+    addChip(
+      data.uses_focusrite_driver ? t('chip.driver.focusrite') : t('chip.driver.uac2'),
+      data.uses_focusrite_driver ? 'warn' : 'ok'
+    );
+    addChip(data.elevated ? t('chip.elevated') : t('chip.notelevated'),
+            data.elevated ? 'ok' : 'error');
+    if (data.ghost_count > 0) addChip(t('chip.ghosts', { n: data.ghost_count }), 'warn');
 
-    // 權限狀態同步到側欄與橫幅
     const pill = $('#elevation-pill');
     pill.dataset.tone = data.elevated ? 'ok' : 'error';
-    $('#elevation-text').textContent = data.elevated ? '系統管理員' : '權限不足';
+    $('#elevation-text').textContent = data.elevated ? t('elev.admin') : t('elev.none');
     $('#elevation-banner').hidden = !!data.elevated;
     $('#suspend-banner').hidden = !data.auto_recover_suspended;
 
     const resetBtn = $('#btn-reset');
     resetBtn.disabled = !data.elevated || !primary || state.busy;
     $('#reset-hint').textContent = !data.elevated
-      ? '需要系統管理員權限才能執行'
+      ? t('reset.sub.noadmin')
       : primary
-        ? '等同於拔掉再插回 USB'
-        : '找不到可重置的裝置';
+        ? t('reset.sub')
+        : t('reset.sub.nodevice');
 
     renderDriver(data);
     renderDeviceTable(data.devices || []);
   }
 
   function renderDriver(data) {
-    const kv = $('#driver-kv');
     const driver = data.driver || {};
     const rows = [
-      ['驅動版本', driver.driver_version || '—'],
-      ['驅動供應商', driver.driver_provider || '—'],
-      ['驅動日期', driver.driver_date || '—'],
-      ['製造商', driver.manufacturer || '—'],
-      ['裝置類別', data.primary ? data.primary.device_class || '—' : '—'],
+      [t('driver.version'), driver.driver_version || '—'],
+      [t('driver.provider'), driver.driver_provider || '—'],
+      [t('driver.date'), driver.driver_date || '—'],
+      [t('driver.manufacturer'), driver.manufacturer || '—'],
+      [t('driver.class'), data.primary ? data.primary.device_class || '—' : '—'],
     ];
-    kv.innerHTML = rows
-      .map(([k, v]) => `<dt>${k}</dt><dd>${escapeHtml(v)}</dd>`)
+    $('#driver-kv').innerHTML = rows
+      .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`)
       .join('');
 
     $('#driver-mode').textContent = data.uses_focusrite_driver
-      ? 'Focusrite 專屬驅動'
-      : 'Windows 內建類別驅動';
-
+      ? t('chip.driver.focusrite')
+      : t('chip.driver.uac2');
     $('#driver-hint').textContent = data.uses_focusrite_driver
-      ? '目前走的是 Focusrite 專屬驅動 —— 也就是本工具要對付的那一套。若改用 Windows 內建的 UAC2 類別驅動並搭配 FlexASIO，問題通常會直接消失，代價是失去 Focusrite Control 2 的軟體功能。'
-      : '目前走的是 Windows 內建的 UAC2 類別驅動，理論上不會遇到 Focusrite 驅動的復原缺陷。此時本工具主要作為保險。';
+      ? t('driver.hint.focusrite')
+      : t('driver.hint.uac2');
   }
 
   function renderDeviceTable(devices) {
     const tbody = $('#devtable tbody');
     if (!devices.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty">沒有找到任何 Focusrite 裝置節點</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="4" class="empty">${escapeHtml(t('devices.empty'))}</td></tr>`;
       return;
     }
     tbody.innerHTML = devices
@@ -259,11 +308,13 @@
     if (!stats) return;
     state.stats = stats;
     $('#stat-last').textContent = stats.last_reset_ago || '—';
-    $('#stat-last-iso').textContent = stats.last_reset_iso || '尚無紀錄';
-    $('#stat-24h').innerHTML = `${stats.resets_24h || 0}<small> 次</small>`;
-    $('#stat-7d').textContent = `7 天內 ${stats.resets_7d || 0} 次`;
+    $('#stat-last-iso').textContent = stats.last_reset_iso || t('stat.none');
+    const unit = t('stat.times');
+    $('#stat-24h').innerHTML =
+      `${stats.resets_24h || 0}${unit ? `<small> ${escapeHtml(unit)}</small>` : ''}`;
+    $('#stat-7d').textContent = t('stat.7d', { n: stats.resets_7d || 0 });
     $('#stat-gap').textContent =
-      stats.mean_gap_hours != null ? `${stats.mean_gap_hours} 小時` : '—';
+      stats.mean_gap_hours != null ? t('unit.hours', { n: stats.mean_gap_hours }) : '—';
   }
 
   // ================================================================ 渲染：監聽儀表
@@ -279,8 +330,8 @@
     sw.setAttribute('aria-checked', String(!!data.running));
 
     $('#monitor-device').textContent = data.running
-      ? data.device_name || '監聽中'
-      : '未啟用';
+      ? data.device_name || t('monitor.on')
+      : t('monitor.off');
 
     const err = $('#monitor-error');
     if (data.error) {
@@ -305,19 +356,19 @@
     const baseline = data.baseline_db;
 
     $('#monitor-readout').textContent =
-      `gap ${data.callback_gap}s${baseline != null ? ` · 噪音底 ${baseline} dB` : ''}`;
+      baseline != null
+        ? t('monitor.readout.base', { gap: data.callback_gap, base: baseline })
+        : t('monitor.readout', { gap: data.callback_gap });
     $('#val-rms').textContent = `${rms.toFixed(1)} dB`;
     $('#val-zcr').textContent = zcr.toFixed(3);
 
     $('#bar-rms').style.width = `${dbToPercent(rms)}%`;
-    $('#bar-baseline').style.left =
-      baseline != null ? `${dbToPercent(baseline)}%` : '0%';
+    $('#bar-baseline').style.left = baseline != null ? `${dbToPercent(baseline)}%` : '0%';
     $('#bar-zcr').style.width = `${Math.min(100, (zcr / 0.6) * 100)}%`;
     $('#bar-zcr-th').style.left =
       `${Math.min(100, (Number(state.config.noise_zcr || 0.3) / 0.6) * 100)}%`;
 
     wave.target = (data.waveform || []).slice(-140);
-
     $('#suspend-banner').hidden = !data.auto_recover_suspended;
   }
 
@@ -352,8 +403,9 @@
         const points = wave.values;
         if (points.length > 1) {
           const step = w / (points.length - 1);
-          const styles = getComputedStyle(document.documentElement);
-          const accent = styles.getPropertyValue('--accent').trim() || '#0a84ff';
+          const accent =
+            getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() ||
+            '#0a84ff';
 
           ctx.beginPath();
           points.forEach((db, i) => {
@@ -382,11 +434,11 @@
     requestAnimationFrame(drawWave);
   }
 
-  // ================================================================ 渲染：滑桿與設定
+  // ================================================================ 滑桿
 
   const SLIDERS = [
     ['#cfg-cooldown', '#val-cooldown', 'cooldown_seconds', (v) => fmtSeconds(v)],
-    ['#cfg-maxreset', '#val-maxreset', 'max_resets_per_hour', (v) => `${v} 次/時`],
+    ['#cfg-maxreset', '#val-maxreset', 'max_resets_per_hour', (v) => t('unit.perhour', { n: v })],
     ['#cfg-stall', '#val-stall', 'stall_seconds', (v) => fmtSeconds(v)],
     ['#cfg-silence', '#val-silence', 'silence_seconds', (v) => fmtSeconds(v)],
     ['#cfg-silencefloor', '#val-silencefloor', 'silence_floor_db', (v) => `${v} dB`],
@@ -421,9 +473,14 @@
 
   function renderInputDevices(devices) {
     const select = $('#cfg-inputdev');
+    state.inputDevices = devices || [];
     const current = state.config.monitor_input_device || '';
-    select.innerHTML = '<option value="">自動選擇 Focusrite</option>';
-    (devices || []).forEach((dev) => {
+    select.innerHTML = '';
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = t('dev.input.auto');
+    select.appendChild(auto);
+    state.inputDevices.forEach((dev) => {
       const option = document.createElement('option');
       option.value = dev.name;
       option.textContent = `${dev.name}${dev.hostapi ? ` — ${dev.hostapi}` : ''}`;
@@ -434,55 +491,51 @@
 
   function renderPaths(paths) {
     if (!paths) return;
+    state.paths = paths;
     $('#paths-kv').innerHTML = [
-      ['設定檔', paths.config],
-      ['紀錄檔', paths.history],
+      [t('paths.config'), paths.config],
+      [t('paths.history'), paths.history],
     ]
-      .map(([k, v]) => `<dt>${k}</dt><dd class="mono">${escapeHtml(v)}</dd>`)
+      .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd class="mono">${escapeHtml(v)}</dd>`)
       .join('');
   }
 
-  // ================================================================ 渲染：紀錄
-
-  const EVENT_LABELS = {
-    reset_manual: ['手動重置', 'ok'],
-    reset_hotkey: ['熱鍵重置', 'ok'],
-    reset_tray: ['系統匣重置', 'ok'],
-    reset_auto: ['自動重置', 'ok'],
-    anomaly: ['偵測到異常', 'warn'],
-    auto_skipped: ['略過自動重置', 'warn'],
-    auto_suspended: ['自動復原已暫停', 'error'],
-    ghost_cleanup: ['清理幽靈裝置', 'ok'],
-    app_start: ['程式啟動', 'idle'],
-    app_stop: ['程式結束', 'idle'],
-  };
+  // ================================================================ 紀錄
 
   async function refreshHistory() {
     const result = await call('history', 80);
-    renderHistory(result && result.history);
+    state.history = (result && result.history) || [];
+    renderHistory(state.history);
   }
 
   function renderHistory(records) {
     const list = $('#timeline');
     if (!records || !records.length) {
-      list.innerHTML = '<li class="empty">尚無紀錄</li>';
+      list.innerHTML = `<li class="empty">${escapeHtml(t('history.empty'))}</li>`;
       return;
     }
     list.innerHTML = records.map(historyItem).join('');
   }
 
   function historyItem(record) {
-    const [label, defaultTone] = EVENT_LABELS[record.event] || [record.event, 'idle'];
-    let tone = defaultTone;
-    if (record.event && record.event.startsWith('reset_')) tone = record.ok ? 'ok' : 'error';
+    const event = String(record.event || '');
+    const label = t(`ev.${event}`) === `ev.${event}` ? event : t(`ev.${event}`);
+
+    let tone = 'idle';
+    if (event.startsWith('reset_')) tone = record.ok ? 'ok' : 'error';
+    else if (event === 'anomaly' || event === 'auto_skipped') tone = 'warn';
+    else if (event === 'auto_suspended') tone = 'error';
+    else if (event === 'ghost_cleanup') tone = 'ok';
 
     const bits = [];
     if (record.message) bits.push(record.message);
     if (record.label) bits.push(record.label);
     if (record.detail) bits.push(record.detail);
-    if (record.duration_ms) bits.push(`耗時 ${record.duration_ms} ms`);
-    if (record.method) bits.push(`方式：${record.method}`);
-    if (record.removed != null) bits.push(`移除 ${record.removed} / ${record.requested} 個`);
+    if (record.duration_ms) bits.push(t('hist.duration', { ms: record.duration_ms }));
+    if (record.method) bits.push(t('hist.method', { method: record.method }));
+    if (record.removed != null) {
+      bits.push(t('hist.removed', { removed: record.removed, requested: record.requested }));
+    }
 
     const time = (record.iso || '').replace('T', ' ').slice(0, 19);
     return `<li class="tl-item">
@@ -505,9 +558,10 @@
 
   function renderGhosts() {
     const list = $('#ghostlist');
-    $('#ghost-count').textContent = `${state.ghosts.length} 個`;
+    if (!list) return;
+    $('#ghost-count').textContent = t('ghosts.count', { n: state.ghosts.length });
     if (!state.ghosts.length) {
-      list.innerHTML = '<li class="empty">沒有殘留的幽靈裝置</li>';
+      list.innerHTML = `<li class="empty">${escapeHtml(t('ghosts.empty'))}</li>`;
       $('#btn-remove-ghosts').disabled = true;
       return;
     }
@@ -584,9 +638,12 @@
 
     btn.classList.remove('is-busy');
     if (result && result.ok) {
-      toast('裝置已重置', result.detail ? '' : '串流已重建', 'ok');
+      toast(t('toast.reset.ok'), t('toast.reset.ok.sub'), 'ok');
     } else {
-      toast('重置失敗', (result && (result.message || '')) + '\n' + (result?.detail || ''), 'error', 7000);
+      const detail = [(result && result.message) || '', (result && result.detail) || '']
+        .filter(Boolean)
+        .join('\n');
+      toast(t('toast.reset.fail'), detail, 'error', 7000);
     }
     await refreshDevice(true);
     await refreshStats();
@@ -623,13 +680,13 @@
           if (state.busy) $('#status-ring').dataset.tone = 'busy';
           break;
         case 'anomaly':
-          toast(`偵測到異常：${payload.label || ''}`, payload.detail || '', 'warn', 8000);
+          toast(t('toast.anomaly', { label: payload.label || '' }), payload.detail || '', 'warn', 8000);
           refreshHistory();
           break;
         case 'auto_suspended':
           $('#suspend-banner').hidden = false;
-          $('#suspend-detail').textContent = payload.detail || '';
-          toast('自動復原已暫停', payload.detail || '', 'error', 9000);
+          $('#suspend-detail').textContent = payload.detail || t('banner.suspend.body');
+          toast(t('toast.suspend'), payload.detail || '', 'error', 9000);
           break;
         case 'history':
           refreshHistory();
@@ -657,22 +714,30 @@
     $('#btn-refresh').addEventListener('click', async () => {
       await refreshDevice(true);
       await refreshStats();
-      toast('已重新整理', '', 'ok', 1800);
+      toast(t('toast.refreshed'), '', 'ok', 1800);
     });
     $('#btn-minimise').addEventListener('click', () => call('hide_window'));
     $('#btn-elevate').addEventListener('click', () => call('relaunch_elevated'));
     $('#btn-resume-auto').addEventListener('click', async () => {
       await call('resume_auto_recover');
       $('#suspend-banner').hidden = true;
-      toast('自動復原已重新啟用', '', 'ok');
+      toast(t('toast.autoresume'), '', 'ok');
+    });
+
+    // --- 語言 ---
+    $('#cfg-language').addEventListener('change', (event) => {
+      const code = event.target.value;
+      state.config.language = code;
+      applyLanguage(code);
+      call('update_settings', { language: code });
     });
 
     // --- 開關 ---
     bindSwitch('#sw-monitor', () => state.monitor.running, async (on) => {
       const result = await call('set_monitor_enabled', on);
       if (result && result.state) renderMonitor(result.state);
-      if (result && !result.ok) toast('無法啟動監聽', result.message || '', 'error', 8000);
-      else toast(on ? '已開始監聽' : '已停止監聽', '', 'ok', 2200);
+      if (result && !result.ok) toast(t('toast.monitor.fail'), result.message || '', 'error', 8000);
+      else toast(on ? t('toast.monitor.on') : t('toast.monitor.off'), '', 'ok', 2200);
       state.config.monitor_enabled = on;
     });
     bindSwitch('#sw-auto', () => state.config.auto_recover, (on) => setConfig('auto_recover', on, true));
@@ -686,7 +751,12 @@
       const result = await call('set_autostart', on);
       state.autostart = !!(result && result.enabled);
       syncSwitches();
-      toast(result?.ok ? '已更新開機設定' : '設定失敗', result?.message || '', result?.ok ? 'ok' : 'error', 5000);
+      toast(
+        result && result.ok ? t('toast.autostart.ok') : t('toast.autostart.fail'),
+        (result && result.message) || '',
+        result && result.ok ? 'ok' : 'error',
+        5000
+      );
     });
 
     bindSliders();
@@ -718,43 +788,41 @@
     // --- 資料 ---
     $('#btn-open-data').addEventListener('click', () => call('open_data_folder'));
     $('#btn-reset-settings').addEventListener('click', async () => {
-      const ok = await confirmDialog('回復預設設定', '所有設定將回到出廠值，紀錄不受影響。');
+      const ok = await confirmDialog(t('dlg.resetsettings.title'), t('dlg.resetsettings.body'));
       if (!ok) return;
       const result = await call('reset_settings');
       if (result && result.config) {
         state.config = result.config;
+        applyLanguage(state.config.language || 'auto');
         syncSwitches();
-        renderSliders();
-        renderInputDevices(state.inputDevices);
       }
-      toast('已回復預設設定', '', 'ok');
+      toast(t('toast.settings.reset'), '', 'ok');
     });
     $('#btn-clear-history').addEventListener('click', async () => {
-      const ok = await confirmDialog('清空紀錄', '所有事件紀錄將被永久刪除，此動作無法復原。');
+      const ok = await confirmDialog(t('dlg.clearhistory.title'), t('dlg.clearhistory.body'));
       if (!ok) return;
       await call('clear_history');
       refreshHistory();
       refreshStats();
-      toast('紀錄已清空', '', 'ok');
+      toast(t('toast.history.cleared'), '', 'ok');
     });
 
     // --- 幽靈裝置 ---
     $('#btn-scan-ghosts').addEventListener('click', async () => {
       await scanGhosts();
-      toast('已重新掃描', `找到 ${state.ghosts.length} 個幽靈裝置`, 'ok', 2400);
+      toast(t('toast.scan.done'), t('toast.scan.found', { n: state.ghosts.length }), 'ok', 2400);
     });
     $('#btn-remove-ghosts').addEventListener('click', async () => {
       const targets = selectedGhosts();
       if (!targets.length) return;
       const ok = await confirmDialog(
-        '移除幽靈裝置',
-        `即將移除 ${targets.length} 個裝置節點。這些節點目前不在線上，移除後若重新插入裝置 ` +
-        'Windows 會重新建立。此動作無法復原。'
+        t('dlg.removeghosts.title'),
+        t('dlg.removeghosts.body', { n: targets.length })
       );
       if (!ok) return;
       const result = await call('remove_ghosts', targets.map((g) => g.instance_id));
       toast(
-        result.ok ? `已移除 ${result.removed} 個` : '移除失敗',
+        result.ok ? t('toast.ghosts.removed', { n: result.removed }) : t('toast.ghosts.fail'),
         (result.results || []).filter((r) => !r.ok).map((r) => r.message).join('\n'),
         result.ok ? 'ok' : 'error',
         6000
@@ -772,51 +840,49 @@
     });
   }
 
-  function escapeHtml(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
   // ================================================================ 啟動
 
   async function boot() {
     const data = await call('bootstrap');
     if (!data || !data.ok) {
-      toast('初始化失敗', (data && data.message) || '', 'error', 9000);
+      toast(t('toast.bootfail'), (data && data.message) || '', 'error', 9000);
       return;
     }
 
     state.config = data.config || {};
     state.autostart = !!data.autostart;
     state.inputDevices = data.input_devices || [];
-    state.ready = true;
+    state.history = data.history || [];
+
+    applyLanguage(state.config.language || 'auto');
 
     renderDevice(data.device);
     renderStats(data.stats);
     renderMonitor(data.monitor);
-    renderHistory(data.history);
+    renderHistory(state.history);
     renderInputDevices(state.inputDevices);
     renderPaths(data.paths);
 
     $('#cfg-hotkey').value = state.config.hotkey || '';
-    $('#cfg-samplerate').value = String(state.config.monitor_samplerate || 48000);
+    $('#cfg-samplerate').value = String(state.config.monitor_samplerate || 0);
     $('#cfg-blocksize').value = String(state.config.monitor_blocksize || 1024);
 
     syncSwitches();
     renderSliders();
 
     if (!data.elevated) {
-      toast('未以系統管理員執行', '重置功能需要提權，可在上方橫幅一鍵重新啟動。', 'warn', 9000);
+      toast(t('toast.notelevated'), t('toast.notelevated.body'), 'warn', 9000);
     }
     if (data.hotkey_error) {
-      toast('熱鍵註冊失敗', data.hotkey_error, 'error', 8000);
+      toast(t('toast.hotkeyfail'), data.hotkey_error, 'error', 8000);
     }
   }
 
+  // 先用系統語言把靜態文字上好，避免 bootstrap 回來前閃過預設語言
+  window.I18N.setLanguage('auto');
+  window.I18N.apply();
   bindEverything();
+  renderViewHeader();
   requestAnimationFrame(drawWave);
 
   if (window.pywebview && window.pywebview.api) boot();

@@ -14,6 +14,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from .i18n import t
+
 # Focusrite 的 USB Vendor ID
 FOCUSRITE_VID = "VID_1235"
 
@@ -243,31 +245,29 @@ def restart_device(instance_id: str) -> ActionResult:
     失敗時退回 Disable-PnpDevice + Enable-PnpDevice。
     """
     if not instance_id:
-        return ActionResult(False, "找不到目標裝置", "請先在設定中選擇要重置的 Focusrite 裝置。")
+        return ActionResult(False, t("dev.notarget"), t("dev.notarget.detail"))
     if not is_elevated():
-        return ActionResult(
-            False,
-            "需要系統管理員權限",
-            "重置 PnP 裝置必須以系統管理員身分執行，請用視窗上方的按鈕重新啟動。",
-        )
+        return ActionResult(False, t("dev.needadmin"), t("dev.needadmin.detail"))
 
     started = time.perf_counter()
     try:
         proc = _run(["pnputil", "/restart-device", instance_id])
     except (subprocess.TimeoutExpired, OSError) as exc:
-        return ActionResult(False, "pnputil 執行失敗", str(exc))
+        return ActionResult(False, t("dev.pnputil.fail"), str(exc))
 
     output = ((proc.stdout or "") + (proc.stderr or "")).strip()
     if proc.returncode == 0:
         elapsed = int((time.perf_counter() - started) * 1000)
-        return ActionResult(True, "裝置已重置", output, elapsed, {"method": "pnputil"})
+        return ActionResult(True, t("dev.reset.ok"), output, elapsed, {"method": "pnputil"})
 
     fallback = _restart_via_pnp_cmdlets(instance_id)
     fallback.duration_ms = int((time.perf_counter() - started) * 1000)
     if not fallback.ok:
-        fallback.detail = (
-            f"pnputil 失敗（exit {proc.returncode}）：{output}\n"
-            f"備援方式也失敗：{fallback.detail}"
+        fallback.detail = t(
+            "dev.pnputil.detail",
+            code=proc.returncode,
+            output=output,
+            fallback=fallback.detail,
         )
     return fallback
 
@@ -283,10 +283,10 @@ def _restart_via_pnp_cmdlets(instance_id: str) -> ActionResult:
     try:
         out = _run_powershell(script, timeout=60.0)
     except (RuntimeError, subprocess.TimeoutExpired, OSError) as exc:
-        return ActionResult(False, "重置失敗", str(exc), extra={"method": "pnp-cmdlets"})
+        return ActionResult(False, t("dev.reset.fail"), str(exc), extra={"method": "pnp-cmdlets"})
     if "OK" in out:
-        return ActionResult(True, "裝置已重置", out.strip(), extra={"method": "pnp-cmdlets"})
-    return ActionResult(False, "重置失敗", out.strip(), extra={"method": "pnp-cmdlets"})
+        return ActionResult(True, t("dev.reset.ok"), out.strip(), extra={"method": "pnp-cmdlets"})
+    return ActionResult(False, t("dev.reset.fail"), out.strip(), extra={"method": "pnp-cmdlets"})
 
 
 def remove_ghost(instance_id: str) -> ActionResult:
@@ -295,15 +295,15 @@ def remove_ghost(instance_id: str) -> ActionResult:
     只該用在 Status 為 Unknown 的裝置上；呼叫端負責確認這一點。
     """
     if not is_elevated():
-        return ActionResult(False, "需要系統管理員權限", "移除裝置節點需要系統管理員權限。")
+        return ActionResult(False, t("dev.needadmin"), t("ghost.needadmin.detail"))
     try:
         proc = _run(["pnputil", "/remove-device", instance_id])
     except (subprocess.TimeoutExpired, OSError) as exc:
-        return ActionResult(False, "移除失敗", str(exc))
+        return ActionResult(False, t("ghost.fail"), str(exc))
     output = ((proc.stdout or "") + (proc.stderr or "")).strip()
     if proc.returncode == 0:
-        return ActionResult(True, "已移除幽靈裝置", output)
-    return ActionResult(False, "移除失敗", f"exit {proc.returncode}: {output}")
+        return ActionResult(True, t("ghost.removed"), output)
+    return ActionResult(False, t("ghost.fail"), f"exit {proc.returncode}: {output}")
 
 
 def wait_until_present(instance_id: str, timeout: float = 15.0) -> bool:

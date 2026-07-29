@@ -26,6 +26,8 @@
 
   --line:          rgba(255, 255, 255, 0.08);
   --line-hi:       rgba(255, 255, 255, 0.14);
+  --scrollbar:     rgba(235, 235, 245, 0.28);
+  --scrollbar-hi:  rgba(235, 235, 245, 0.46);
 
   --accent:        #0a84ff;
   --accent-hi:     #409cff;
@@ -62,6 +64,8 @@
 
     --line:    rgba(0, 0, 0, 0.08);
     --line-hi: rgba(0, 0, 0, 0.13);
+    --scrollbar:    rgba(60, 60, 67, 0.32);
+    --scrollbar-hi: rgba(60, 60, 67, 0.5);
 
     --accent: #007aff;
     --green:  #248a3d;
@@ -118,6 +122,10 @@ body::before {
   z-index: 1;
   display: grid;
   grid-template-columns: 216px 1fr;
+  /* 沒有明確指定列高時，隱含列是 auto —— 內容變高時整列會跟著長出容器，
+     .scroll 就永遠拿不到有界的高度，於是不捲動、下半部被 body 的
+     overflow:hidden 裁掉。minmax(0, 1fr) 把列夾在容器高度內。 */
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
 }
 
@@ -125,6 +133,8 @@ body::before {
 .sidebar {
   display: flex;
   flex-direction: column;
+  min-height: 0;          /* 視窗很矮時側欄自己捲，不去撐破版面 */
+  overflow-y: auto;
   padding: 18px 12px 14px;
   background: var(--chrome);
   backdrop-filter: blur(30px) saturate(180%);
@@ -199,7 +209,7 @@ body::before {
 .pill[data-tone="error"] .dot { background: var(--red); }
 
 /* 主要區域 */
-.main { display: flex; flex-direction: column; min-width: 0; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .topbar {
   display: flex; align-items: flex-end; justify-content: space-between;
@@ -223,20 +233,34 @@ body::before {
 }
 .topbar-actions { display: flex; gap: 8px; flex: none; }
 
-/* 捲動區：用漸層遮罩取代硬分隔線 */
-.scroll {
+/* 捲動區：用漸層取代硬分隔線 */
+.scroll-wrap {
   position: relative;
   flex: 1; min-height: 0;
-  overflow-y: auto; overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line-hi) transparent;
-  mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+  display: flex;
 }
-.scroll::-webkit-scrollbar { width: 10px; }
+.scroll {
+  position: relative;
+  flex: 1; min-height: 0; min-width: 0;
+  overflow-y: auto; overflow-x: hidden;
+  /* 捲軸永遠佔位，避免內容長度跨過臨界值時整頁寬度跳動 */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar) transparent;
+}
+.scroll::-webkit-scrollbar { width: 11px; }
 .scroll::-webkit-scrollbar-thumb {
-  background: var(--line-hi); border-radius: 99px;
+  background: var(--scrollbar); border-radius: 99px;
   border: 3px solid transparent; background-clip: content-box;
+}
+.scroll::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hi); background-clip: content-box; }
+
+/* 捲動邊緣效果做成獨立的漸層層，而不是給 .scroll 上 mask ——
+   mask 會連捲軸一起淡掉，反而讓人以為沒有捲軸。 */
+.scroll-edge {
+  position: absolute; left: 0; right: 0; top: 0; height: 18px;
+  pointer-events: none; z-index: 2;
+  background: linear-gradient(to bottom, var(--chrome), transparent);
 }
 .scroll-inner { padding: 6px 28px 40px; max-width: 900px; }
 

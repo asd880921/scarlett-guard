@@ -11,6 +11,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any
 
+from .i18n import t
 from .paths import HISTORY_PATH
 
 _MAX_LINES = 5000
@@ -132,9 +133,9 @@ def _humanise(seconds: float) -> str:
     hours, rem = divmod(delta.seconds, 3600)
     minutes = rem // 60
     if days:
-        return f"{days} 天前"
+        return t("time.days", n=days)
     if hours:
-        return f"{hours} 小時前"
+        return t("time.hours", n=hours)
     if minutes:
-        return f"{minutes} 分鐘前"
-    return "剛剛"
+        return t("time.minutes", n=minutes)
+    return t("time.now")

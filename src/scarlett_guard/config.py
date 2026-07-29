@@ -9,6 +9,9 @@ from typing import Any
 from .paths import CONFIG_PATH
 
 DEFAULTS: dict[str, Any] = {
+    # --- 介面 ---
+    # "auto" 跟隨系統地區設定；也可指定 zh-Hant / zh-Hans / en
+    "language": "auto",
     # --- 裝置 ---
     # 空字串代表「自動偵測」（抓第一個 Focusrite VID_1235 裝置）
     "device_instance_id": "",

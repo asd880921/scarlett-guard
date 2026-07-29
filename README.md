@@ -64,6 +64,12 @@ CPU 尖峰只是提高丟包機率的「觸發條件」，不是根因。
 - 顯示目前驅動版本、供應商、日期，並判斷你走的是 **Focusrite 專屬驅動**還是
   **Windows 內建 UAC2 類別驅動**
 
+### 多語系
+繁體中文 / 简体中文 / English，預設跟隨系統地區設定，可在設定頁手動切換。
+切換後介面即時套用，**系統匣選單**因為是在啟動時建立的，會在下次啟動時跟著換。
+
+前端與後端各有一份語言檔（`ui/i18n.js`、`i18n.py`），三種語言的 key 完全對齊。
+
 ### 常駐
 - 系統匣圖示帶狀態色（正常／忙碌／異常）
 - 關閉視窗收進系統匣，熱鍵持續有效
@@ -139,8 +145,10 @@ src/scarlett_guard/
   autostart.py             工作排程器整合
   elevation.py             UAC 提權
   config.py / history.py   設定與紀錄持久化
+  i18n.py                  後端文案（錯誤訊息、系統通知、系統匣、相對時間）
   api.py                   pywebview 的 JS ↔ Python 橋接
   ui/                      介面（HTML / CSS / JS）
+  ui/i18n.js               前端文案
 ```
 
 介面用 pywebview（WebView2）承載，視覺與動態依循 Apple 的介面設計原則：

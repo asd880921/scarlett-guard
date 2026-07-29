@@ -26,6 +26,8 @@ from typing import Any, Callable
 
 import numpy as np
 
+from .i18n import t
+
 try:
     import sounddevice as sd
 
@@ -144,14 +146,14 @@ class AudioMonitor:
     def start(self) -> tuple[bool, str]:
         with self._lock:
             if self._running:
-                return True, "已在執行"
+                return True, t("mon.already")
             if sd is None:
-                self._error = f"sounddevice 無法載入：{_SD_ERROR}"
+                self._error = t("mon.nosd", error=_SD_ERROR)
                 return False, self._error
 
             device = self._resolve_device()
             if device is None:
-                self._error = "找不到 Focusrite 錄音裝置，請確認裝置已連接。"
+                self._error = t("mon.nodevice")
                 return False, self._error
 
             samplerate = int(self._config.get("monitor_samplerate") or 0)
@@ -174,10 +176,7 @@ class AudioMonitor:
                 self._stream.start()
             except Exception as exc:
                 self._stream = None
-                self._error = (
-                    f"無法開啟錄音串流：{exc}\n"
-                    "若 DAW 正以 ASIO 獨佔此裝置，監聽功能會被擋下，這是正常的。"
-                )
+                self._error = t("mon.openfail", error=exc)
                 return False, self._error
 
             self._device_name = device["name"]
@@ -192,7 +191,7 @@ class AudioMonitor:
         )
         self._watchdog.start()
         self._on_state_change()
-        return True, f"已開始監聽「{self._device_name}」"
+        return True, t("mon.started", name=self._device_name)
 
     def stop(self) -> None:
         with self._lock:
@@ -313,8 +312,8 @@ class AudioMonitor:
             if gap > float(cfg.get("stall_seconds", 2.0)):
                 return Anomaly(
                     "stall",
-                    "音訊串流停止回應",
-                    f"已有 {gap:.1f} 秒沒有收到音訊資料，driver 的 stream 時鐘可能已凍結。",
+                    t("anom.stall.label"),
+                    t("anom.stall.detail", gap=f"{gap:.1f}"),
                     {"gap_seconds": round(gap, 2)},
                 )
 
@@ -328,9 +327,8 @@ class AudioMonitor:
                     held = now - self._silence_since
                     return Anomaly(
                         "silence",
-                        "輸入訊號完全消失",
-                        f"連續 {held:.1f} 秒偵測到數位靜音（{rms_db:.0f} dBFS）。"
-                        "類比 ADC 正常運作時不可能長時間輸出精確的零值。",
+                        t("anom.silence.label"),
+                        t("anom.silence.detail", held=f"{held:.1f}", rms=f"{rms_db:.0f}"),
                         {"rms_db": round(rms_db, 1), "held_seconds": round(held, 1)},
                     )
             else:
@@ -352,9 +350,13 @@ class AudioMonitor:
                     held = now - self._noise_since
                     return Anomaly(
                         "noise",
-                        "偵測到疑似電流音",
-                        f"訊號高出噪音底 {rms_db - (self._baseline_db or 0):.0f} dB "
-                        f"且過零率達 {zcr:.2f}，持續 {held:.1f} 秒。",
+                        t("anom.noise.label"),
+                        t(
+                            "anom.noise.detail",
+                            margin=f"{rms_db - (self._baseline_db or 0):.0f}",
+                            zcr=f"{zcr:.2f}",
+                            held=f"{held:.1f}",
+                        ),
                         {
                             "rms_db": round(rms_db, 1),
                             "baseline_db": round(self._baseline_db or 0.0, 1),

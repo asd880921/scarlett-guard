@@ -9,7 +9,7 @@ import functools
 import traceback
 from typing import Any, Callable
 
-from . import device, elevation, hotkey
+from . import device, elevation, hotkey, i18n
 from .paths import HISTORY_PATH, CONFIG_PATH, data_dir
 from .service import GuardService
 
@@ -111,8 +111,9 @@ class Api:
     def reset_settings(self) -> dict[str, Any]:
         self.service.config.reset_to_defaults()
         cfg = self.service.config.as_dict()
+        i18n.set_language(cfg["language"])
         self.service.hotkeys.apply(cfg["hotkey"], cfg["hotkey_enabled"])
-        return {"ok": True, "config": cfg, "messages": ["已回復預設設定"]}
+        return {"ok": True, "config": cfg, "messages": [i18n.t("cfg.restored")]}
 
     @_safe
     def validate_hotkey(self, combo: str) -> dict[str, Any]:

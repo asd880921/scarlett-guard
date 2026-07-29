@@ -11,6 +11,7 @@ import webview
 
 from . import elevation
 from .api import Api
+from .i18n import t
 from .paths import ui_dir
 from .service import GuardService
 from .tray import Tray
@@ -127,7 +128,7 @@ class Application:
         if channel == "anomaly" and self.tray is not None:
             self.tray.set_state("error")
             if self.service.config.get("notify_on_reset"):
-                self.tray.notify("偵測到異常", str(payload.get("label", "")))
+                self.tray.notify(t("tray.anomaly"), str(payload.get("label", "")))
 
         if channel == "history" and self.tray is not None:
             event = str(payload.get("event", ""))
@@ -136,8 +137,10 @@ class Application:
                 self.tray.set_state("ok" if ok else "error")
                 if self.service.config.get("notify_on_reset"):
                     self.tray.notify(
-                        "Scarlett Guard",
-                        "裝置已重置" if ok else f"重置失敗：{payload.get('message', '')}",
+                        t("tray.title"),
+                        t("tray.reset.ok")
+                        if ok
+                        else t("tray.reset.fail", message=payload.get("message", "")),
                     )
 
     def _push(self, channel: str, payload: dict[str, Any]) -> None:

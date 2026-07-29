@@ -7,6 +7,8 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
+from .i18n import t
+
 try:
     from pynput import keyboard
 
@@ -39,13 +41,13 @@ class HotkeyManager:
     def apply(self, combo: str, enabled: bool) -> tuple[bool, str]:
         self.stop()
         if not enabled:
-            return True, "熱鍵已停用"
+            return True, t("hk.disabled")
         if keyboard is None:
-            self._error = f"pynput 無法載入：{_PYNPUT_ERROR}"
+            self._error = t("hk.nopynput", error=_PYNPUT_ERROR)
             return False, self._error
         combo = (combo or "").strip()
         if not combo:
-            self._error = "熱鍵組合為空"
+            self._error = t("hk.empty")
             return False, self._error
 
         with self._lock:
@@ -54,12 +56,12 @@ class HotkeyManager:
                 listener.daemon = True
                 listener.start()
             except Exception as exc:
-                self._error = f"熱鍵註冊失敗：{exc}"
+                self._error = t("hk.failed", error=exc)
                 return False, self._error
             self._listener = listener
             self._combo = combo
             self._error = ""
-        return True, f"熱鍵已註冊：{combo}"
+        return True, t("hk.registered", combo=combo)
 
     def stop(self) -> None:
         with self._lock:
@@ -79,9 +81,9 @@ class HotkeyManager:
 def validate(combo: str) -> tuple[bool, str]:
     """在真正註冊前先驗證組合字串是否合法。"""
     if keyboard is None:
-        return False, "pynput 無法載入"
+        return False, t("hk.noload")
     try:
         keyboard.HotKey.parse(combo)
     except Exception as exc:
-        return False, f"格式錯誤：{exc}"
-    return True, "格式正確"
+        return False, t("hk.invalid", error=exc)
+    return True, t("hk.valid")

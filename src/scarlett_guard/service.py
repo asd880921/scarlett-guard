@@ -9,7 +9,8 @@ import threading
 import time
 from typing import Any, Callable
 
-from . import autostart, device, hotkey, monitor
+from . import autostart, device, hotkey, i18n, monitor
+from .i18n import t
 from .config import Config
 from .history import History
 
@@ -17,6 +18,8 @@ from .history import History
 class GuardService:
     def __init__(self) -> None:
         self.config = Config()
+        # 語言要在任何會產生訊息的東西建立之前先設定好
+        i18n.set_language(self.config.get("language"))
         self.history = History()
         self.history.trim()
 
@@ -86,7 +89,7 @@ class GuardService:
     def reset(self, source: str = "manual") -> dict[str, Any]:
         """軟體版拔插。source: manual | hotkey | tray | auto"""
         if not self._reset_lock.acquire(blocking=False):
-            return {"ok": False, "message": "已有重置作業進行中", "detail": ""}
+            return {"ok": False, "message": t("dev.busy"), "detail": ""}
 
         try:
             self._busy = True
@@ -96,7 +99,7 @@ class GuardService:
             primary = device.find_primary_device(target)
             if primary is None:
                 result = device.ActionResult(
-                    False, "找不到 Focusrite 裝置", "請確認 USB 已連接。"
+                    False, t("dev.notfound"), t("dev.notfound.detail")
                 )
                 self._log_reset(source, result, "")
                 return result.to_dict()
@@ -119,7 +122,9 @@ class GuardService:
                 self.monitor.stop()
                 ok, message = self.monitor.start()
                 if not ok:
-                    result.detail = (result.detail + "\n監聽重啟失敗：" + message).strip()
+                    result.detail = (
+                        result.detail + "\n" + t("mon.restartfail", message=message)
+                    ).strip()
 
             self.invalidate_snapshot()
             self._log_reset(source, result, primary.friendly_name)
@@ -168,7 +173,9 @@ class GuardService:
             self.history.log(
                 "auto_skipped",
                 reason="cooldown",
-                detail=f"距離上次自動重置僅 {since_last:.0f} 秒，未達冷卻時間 {cooldown:.0f} 秒。",
+                detail=t(
+                    "auto.cooldown", since=f"{since_last:.0f}", cooldown=f"{cooldown:.0f}"
+                ),
             )
             self.monitor.resume()
             return
@@ -179,7 +186,7 @@ class GuardService:
             self._auto_recover_suspended = True
             record = self.history.log(
                 "auto_suspended",
-                detail=f"一小時內已重置 {limit} 次，自動復原已暫停以避免無限迴圈。",
+                detail=t("auto.suspended", limit=limit),
             )
             self._emit("auto_suspended", record)
             self._emit("history", record)
@@ -210,7 +217,7 @@ class GuardService:
             ok, message = self.monitor.start()
         else:
             self.monitor.stop()
-            ok, message = True, "已停止監聽"
+            ok, message = True, t("mon.stopped")
         return {"ok": ok, "message": message, "state": self.monitor_state()}
 
     # ------------------------------------------------------------------
@@ -222,6 +229,11 @@ class GuardService:
         after = self.config.as_dict()
         messages: list[str] = []
 
+        if after["language"] != before["language"]:
+            # 之後產生的所有後端訊息都會用新語言；系統匣選單是在啟動時建好的，
+            # 要下次啟動才會跟著換。
+            i18n.set_language(after["language"])
+
         if (
             after["hotkey"] != before["hotkey"]
             or after["hotkey_enabled"] != before["hotkey_enabled"]
@@ -232,7 +244,7 @@ class GuardService:
                 # 熱鍵設壞了就退回原本能用的組合，不要讓使用者失去這個功能
                 self.config.set("hotkey", before["hotkey"])
                 self.hotkeys.apply(before["hotkey"], before["hotkey_enabled"])
-                messages.append(f"已還原為先前的組合：{before['hotkey']}")
+                messages.append(t("hk.reverted", combo=before["hotkey"]))
 
         needs_restart = any(
             after[key] != before[key]
@@ -270,7 +282,7 @@ class GuardService:
                     {
                         "instance_id": instance_id,
                         "ok": False,
-                        "message": "略過：此裝置目前並非幽靈狀態",
+                        "message": t("ghost.skip"),
                     }
                 )
                 continue
