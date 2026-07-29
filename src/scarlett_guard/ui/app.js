@@ -71,8 +71,28 @@
     return (window.pywebview && window.pywebview.api) || null;
   }
 
-  async function call(method, ...args) {
+  /* 橋接是否「真的」可用。
+   *
+   * 不能只檢查 window.pywebview.api 是否存在：pywebview 會先建立一個空物件，
+   * 方法是稍後才逐一掛上去的。只看物件存在就開始呼叫，會拿到
+   * 「橋接尚未就緒：bootstrap」。所以直接檢查要用的方法本身。
+   */
+  function bridgeReady() {
     const bridge = api();
+    return !!(bridge && typeof bridge.bootstrap === 'function');
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function call(method, ...args) {
+    // 方法可能還沒掛上來（pywebview 是逐一注入的），短暫等待再放棄，
+    // 而不是把一個暫時性的競態當成永久失敗回報給使用者。
+    let bridge = api();
+    for (let waited = 0; waited < 5000; waited += 100) {
+      if (bridge && typeof bridge[method] === 'function') break;
+      await sleep(100);
+      bridge = api();
+    }
     if (!bridge || typeof bridge[method] !== 'function') {
       return { ok: false, message: t('toast.bridge', { method }) };
     }
@@ -904,6 +924,10 @@
     const data = await call('bootstrap');
     trace(`boot: bootstrap returned ok=${data && data.ok}`);
     if (!data || !data.ok) {
+      // 記錄下來，否則這種啟動期失敗只會閃一則 toast 就消失，事後查不到
+      reportError('bootstrap', (data && data.message) || 'no response');
+    }
+    if (!data || !data.ok) {
       toast(t('toast.bootfail'), (data && data.message) || '', 'error', 9000);
       return;
     }
@@ -972,7 +996,7 @@
     };
 
     const poll = setInterval(() => {
-      if (window.pywebview && window.pywebview.api) run();
+      if (bridgeReady()) run();
     }, 50);
     const giveUp = setTimeout(() => {
       clearInterval(poll);
@@ -982,8 +1006,11 @@
       }
     }, 20000);
 
-    window.addEventListener('pywebviewready', run);
-    if (window.pywebview && window.pywebview.api) run();
+    // 事件本身也可能早於方法掛載，所以一律回到 bridgeReady() 判斷
+    window.addEventListener('pywebviewready', () => {
+      if (bridgeReady()) run();
+    });
+    if (bridgeReady()) run();
   }
 
   trace('script end');
