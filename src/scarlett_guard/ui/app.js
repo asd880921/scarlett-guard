@@ -16,6 +16,42 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const t = (key, params) => window.I18N.t(key, params);
 
+  // ================================================================ 診斷
+  // 這一段刻意放在最前面：任何在它之後發生的錯誤都會被接住。
+  // 函式宣告會被提升，所以這裡可以安全地引用底下才定義的 api() 與 toast()。
+
+  window.__SG_ERRORS = [];
+  // 啟動軌跡。UI 出問題時要能回答「到底走到哪一步」，光看畫面看不出來。
+  window.__SG_TRACE = [];
+  const trace = (msg) => window.__SG_TRACE.push(msg);
+
+  function reportError(where, error) {
+    const detail = error && error.stack ? error.stack : String(error);
+    // 先留在記憶體裡 —— 錯誤很可能發生在橋接就緒之前，那時送不出去
+    window.__SG_ERRORS.push(`${where}: ${detail}`);
+    try {
+      toast('UI error', `${where}: ${detail}`.slice(0, 400), 'error', 15000);
+    } catch (_) { /* DOM 還沒好 */ }
+  }
+
+  window.addEventListener('error', (event) =>
+    reportError('window.onerror', event.error || event.message));
+  window.addEventListener('unhandledrejection', (event) =>
+    reportError('unhandledrejection', event.reason));
+
+  // 橋接就緒後把累積的錯誤送到後端紀錄。沒有這條路徑的話，UI 的 JS 錯誤
+  // 只會讓畫面安靜地半殘，從後端完全看不出任何異常。
+  let flushed = 0;
+  const flushTimer = setInterval(() => {
+    const bridge = (window.pywebview && window.pywebview.api) || null;
+    if (!bridge || !bridge.log_js_error) return;
+    while (flushed < window.__SG_ERRORS.length) {
+      bridge.log_js_error('js', window.__SG_ERRORS[flushed]);
+      flushed += 1;
+    }
+  }, 800);
+  window.addEventListener('beforeunload', () => clearInterval(flushTimer));
+
   const state = {
     config: {},
     device: null,
@@ -843,7 +879,17 @@
   // ================================================================ 啟動
 
   async function boot() {
+    try {
+      await bootInner();
+    } catch (err) {
+      reportError('boot', err);
+    }
+  }
+
+  async function bootInner() {
+    trace('boot: calling bootstrap');
     const data = await call('bootstrap');
+    trace(`boot: bootstrap returned ok=${data && data.ok}`);
     if (!data || !data.ok) {
       toast(t('toast.bootfail'), (data && data.message) || '', 'error', 9000);
       return;
@@ -876,8 +922,10 @@
     if (data.hotkey_error) {
       toast(t('toast.hotkeyfail'), data.hotkey_error, 'error', 8000);
     }
+    trace('boot: done');
   }
 
+  // 前端例外若沒有出口，畫面只會安靜地半殘 —— 一律回報到後端紀錄並提示使用者
   // 先用系統語言把靜態文字上好，避免 bootstrap 回來前閃過預設語言
   window.I18N.setLanguage('auto');
   window.I18N.apply();
@@ -885,6 +933,41 @@
   renderViewHeader();
   requestAnimationFrame(drawWave);
 
-  if (window.pywebview && window.pywebview.api) boot();
-  else window.addEventListener('pywebviewready', boot);
+  /* 等待 pywebview 橋接就緒。
+   *
+   * 只監聽 pywebviewready 是不夠的：如果事件在本腳本執行前就已經觸發
+   * （例如多載入一支 script 讓執行時機晚了幾毫秒），監聽器就永遠等不到，
+   * boot() 不會執行，畫面會停在靜態文字、所有資料都是空的 —— 而且完全
+   * 沒有錯誤訊息。所以事件與輪詢兩條路並行，先到者贏。
+   */
+  function whenBridgeReady(callback) {
+    let fired = false;
+    const run = () => {
+      if (fired) return;
+      fired = true;
+      clearInterval(poll);
+      clearTimeout(giveUp);
+      callback();
+    };
+
+    const poll = setInterval(() => {
+      if (window.pywebview && window.pywebview.api) run();
+    }, 50);
+    const giveUp = setTimeout(() => {
+      clearInterval(poll);
+      if (!fired) {
+        fired = true;
+        toast('Bridge timeout', 'pywebview API 在 20 秒內未就緒。', 'error', 20000);
+      }
+    }, 20000);
+
+    window.addEventListener('pywebviewready', run);
+    if (window.pywebview && window.pywebview.api) run();
+  }
+
+  trace('script end');
+  whenBridgeReady(() => {
+    trace('bridge ready');
+    boot();
+  });
 })();
