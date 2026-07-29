@@ -74,7 +74,7 @@ window.I18N = (() => {
       'driver.manufacturer': '製造商',
       'driver.class': '裝置類別',
       'driver.hint.focusrite':
-        '目前走的是 Focusrite 專屬驅動 —— 也就是本工具要對付的那一套。若改用 Windows 內建的 UAC2 類別驅動並搭配 FlexASIO，問題通常會直接消失，代價是失去 Focusrite Control 2 的軟體功能。',
+        '目前使用 Focusrite 專屬驅動。本工具的重置功能正是針對這套驅動的音訊串流問題設計的。',
       'driver.hint.uac2':
         '目前走的是 Windows 內建的 UAC2 類別驅動，理論上不會遇到 Focusrite 驅動的復原缺陷。此時本工具主要作為保險。',
 
@@ -293,7 +293,7 @@ window.I18N = (() => {
       'driver.manufacturer': '制造商',
       'driver.class': '设备类别',
       'driver.hint.focusrite':
-        '当前使用的是 Focusrite 专属驱动 —— 也就是本工具要对付的那一套。若改用 Windows 内置的 UAC2 类驱动并搭配 FlexASIO，问题通常会直接消失，代价是失去 Focusrite Control 2 的软件功能。',
+        '当前使用 Focusrite 专属驱动。本工具的重置功能正是针对这套驱动的音频流问题设计的。',
       'driver.hint.uac2':
         '当前使用的是 Windows 内置的 UAC2 类驱动，理论上不会遇到 Focusrite 驱动的恢复缺陷。此时本工具主要作为保险。',
 
@@ -513,7 +513,7 @@ window.I18N = (() => {
       'driver.manufacturer': 'Manufacturer',
       'driver.class': 'Device class',
       'driver.hint.focusrite':
-        "You're on the Focusrite driver — the one this tool exists to work around. Switching to the built-in Windows UAC2 class driver plus FlexASIO usually makes the problem disappear outright, at the cost of losing Focusrite Control 2's software features.",
+        "You're on the Focusrite driver. This tool's reset exists precisely for the audio-stream problems that driver exhibits.",
       'driver.hint.uac2':
         "You're on the built-in Windows UAC2 class driver, which shouldn't exhibit the Focusrite driver's recovery defect. This tool is mainly insurance here.",
 
