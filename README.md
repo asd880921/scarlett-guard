@@ -1,33 +1,38 @@
 # Scarlett Guard
 
-**Focusrite Scarlett 介面的「軟體版 USB 拔插」工具。**
-聲音突然變成電流音或整個消失時，按一下（或一組熱鍵）就能重建音訊串流 ——
-不必伸手到主機後面拔線，也不必打開 Focusrite Control 2 去切換 Sample Rate。
+**English** · [繁體中文](README.zh-TW.md)
 
-Windows 10 / 11 ・ Python 3.11+
-針對 **Scarlett Solo 4th Gen** 開發與實測，任何 Focusrite USB 介面都適用。
+**Reset your Focusrite Scarlett without unplugging it.**
+When the audio turns into static or vanishes entirely, one hotkey rebuilds the audio stream —
+no reaching behind the desk for the USB cable, no digging through Focusrite Control 2
+to toggle the sample rate.
 
----
-
-## 這個工具在解決什麼問題
-
-用 Scarlett 錄音或聽音樂時，聲音偶爾會突然變成持續的電流音、或是直接消失，
-而且**不會自己恢復**。CPU 忙碌時特別容易發生。
-
-社群長年只有兩種解法：
-
-1. 把 USB 線拔掉再插回去
-2. 打開 Focusrite Control 2，切換一下 Sample Rate 或 Buffer Size
-
-這兩招其實是同一件事 —— **強迫驅動把音訊串流整個關掉再重開**。
-Windows 內建的 `pnputil /restart-device` 可以在軟體層做到完全一樣的效果，
-而且更快、不用碰線材、也不用切換視窗。Scarlett Guard 就是圍繞這一點打造的。
-
-實測在 Scarlett Solo 4th Gen 上，一次重置約 **3 秒**完成。
+Windows 10 / 11 · Python 3.11+
+Built and tested against the **Scarlett Solo 4th Gen**; works with any Focusrite USB interface.
 
 ---
 
-## 快速開始
+## The problem this solves
+
+While recording or just listening, the Scarlett sometimes drops into continuous static —
+or the sound disappears completely — and **it never recovers on its own**.
+It happens more often when the CPU is busy.
+
+For years the community has had exactly two fixes:
+
+1. Unplug the USB cable and plug it back in
+2. Open Focusrite Control 2 and toggle the sample rate or buffer size
+
+Both do the same underlying thing: **force the driver to tear the audio stream down and
+rebuild it**. Windows' own `pnputil /restart-device` achieves precisely that in software —
+faster, without touching a cable, and without switching windows. Scarlett Guard is built
+around that one idea.
+
+Measured on a Scarlett Solo 4th Gen, a reset completes in about **3 seconds**.
+
+---
+
+## Quick start
 
 ```powershell
 cd scarlett-guard
@@ -35,22 +40,22 @@ py -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-然後執行：
+Then run:
 
 ```powershell
 start.bat
 ```
 
-就這樣。之後把設定頁的「開機自動啟動」打開，它就會常駐在系統匣裡待命。
+That's it. Turn on **Start with Windows** in Settings and it will sit in the tray, ready.
 
 <details>
-<summary>其他啟動方式</summary>
+<summary>Other ways to launch</summary>
 
 ```powershell
-# 不提權啟動（視窗開得起來，但重置按鈕會停用）
+# Without elevation (the window opens, but the reset button stays disabled)
 .venv\Scripts\python.exe run.py
 
-# 啟動後直接收進系統匣，不顯示視窗
+# Start straight into the tray, no window
 .venv\Scripts\pythonw.exe run.py --tray
 ```
 
@@ -58,145 +63,161 @@ start.bat
 
 ---
 
-## 怎麼用
+## Using it
 
-出問題時，用以下任一種方式重置：
+When the audio breaks, reset it any of these ways:
 
-| 方式 | 操作 |
+| Method | How |
 |---|---|
-| **全域熱鍵**（最快） | `Ctrl` + `Alt` + `R`，在全螢幕 DAW 或遊戲裡同樣有效 |
-| **系統匣** | 右鍵圖示 → 第一項「立即重置裝置」 |
-| **主視窗** | 狀態頁的大按鈕 |
+| **Global hotkey** (fastest) | `Ctrl` + `Alt` + `R` — works from full-screen DAWs and games |
+| **System tray** | Right-click the icon → first item, "Reset device now" |
+| **Main window** | The large button on the Status page |
 
-> 系統匣圖示的**左鍵雙擊是開啟視窗，不是重置** —— 重置會中斷音訊約三秒，
-> 綁在這麼容易誤觸的操作上代價太高。需要快速重置請用熱鍵。
+> Double-clicking the tray icon **opens the window; it does not reset**. A reset interrupts
+> audio for a few seconds, which is too costly to attach to something that easy to hit by
+> accident. Use the hotkey when you want speed.
 
-重置期間音訊會中斷幾秒，DAW 可能需要重新選擇裝置或重開串流，這和實體拔插 USB 是一樣的。
+Audio cuts out for a few seconds during a reset, and your DAW may need to re-select the
+device or restart its stream — exactly as if you had unplugged the USB cable.
 
 ---
 
-## 自動偵測（進階，預設關閉）
+## Automatic detection (advanced, off by default)
 
-Scarlett Guard 可以持續監聽介面的**錄音輸入**，偵測到異常時自動幫你重置。
+Scarlett Guard can watch the interface's **capture input** continuously and reset for you
+when something looks wrong.
 
-三個可以個別開關的偵測器：
+Three detectors, each independently switchable:
 
-| 偵測器 | 偵測什麼 | 可靠度 |
+| Detector | What it looks for | Reliability |
 |---|---|---|
-| **串流凍結** | 音訊資料完全停止進來，代表驅動的串流時鐘停了 | 最高 |
-| **訊號消失** | 輸入持續為完全的數位靜音（正常的類比輸入永遠有微弱噪音底） | 高 |
-| **電流音** | 音量遠高於平時的噪音底，且波形特徵接近雜訊 | 最容易誤判 |
+| **Stream stall** | Audio data stops arriving entirely — the driver's stream clock has stopped | Highest |
+| **Signal loss** | The input sits at perfect digital silence (a working analogue input always has a faint noise floor) | High |
+| **Static** | Level far above the usual noise floor with a waveform that looks like noise | Most false-positive-prone |
 
-兩道安全閥避免它失控：**冷卻時間**（兩次自動重置之間的最短間隔）與
-**每小時上限**（超過就自動暫停，避免裝置真的故障時無限重置）。
+Two safety valves keep it from running away: a **cooldown** (minimum gap between two
+automatic resets) and an **hourly limit** (auto-recovery suspends itself when exceeded, so a
+genuinely broken device doesn't get reset forever).
 
-> ⚠️ **請先觀察再啟用自動復原。**
-> 這些偵測是經驗法則，不是保證 —— 尤其「電流音」偵測器，錄製 hi-hat、
-> 破音吉他或白噪素材時都可能誤判。
+> ⚠️ **Watch it before you enable auto-recovery.**
+> These detectors are heuristics, not guarantees — the static detector especially can trip on
+> hi-hats, distorted guitar, or white-noise material.
 >
-> 建議先只開「音訊監聽」跑幾天，看看儀表與紀錄。等下次真的斷音時，
-> 確認紀錄裡有對應的異常事件、而且平時不會亂跳，再打開自動復原。
-> 偵測頁有即時儀表（波形、音量、過零率、學習到的噪音底）可以自己調門檻。
+> Run monitoring alone for a few days first and watch the meters and the log. When the audio
+> next breaks, check that the log actually recorded a matching anomaly, and that nothing fires
+> during normal use. Then turn on auto-recovery. The Detection page has live meters
+> (waveform, level, zero-crossing rate, learned noise floor) so you can tune the thresholds
+> against your own material.
 
 ---
 
-## 其他功能
+## Other features
 
-**紀錄與統計** —— 每次重置與異常都會記下來，並統計 24 小時／7 天內的次數與
-**平均間隔**。這能回答「到底多久壞一次、是不是真的和 CPU 負載有關」。
-紀錄是純文字的 JSON Lines，可以直接用文字編輯器或 pandas 分析。
+**Log and statistics** — every reset and anomaly is recorded, with counts for the last 24
+hours and 7 days plus the **mean interval** between resets. That answers the real question:
+how often does this actually happen, and does it really correlate with CPU load? The log is
+plain-text JSON Lines, so you can open it in any editor or load it straight into pandas.
 
-**幽靈裝置清理** —— 反覆插拔和重裝驅動會在 Windows 裡累積殘留的裝置節點
-（狀態顯示 Unknown）。維護頁可以列出來勾選移除。
-這**不保證**能改善斷音，但清乾淨可以排除干擾因素，讓後續判斷更可信。
+**Phantom device cleanup** — repeated replugging and driver reinstalls leave dead device
+nodes behind in Windows (shown with status Unknown). The Maintenance page lists them so you
+can select and remove them. This is **not guaranteed** to help with dropouts, but clearing
+them removes a confounding variable and makes later troubleshooting more trustworthy.
 
-**裝置資訊** —— 顯示目前的驅動版本、供應商、日期，以及裝置在系統裡註冊的所有節點。
+**Device information** — current driver version, provider and date, plus every node the
+interface has registered in the system.
 
-**多語系** —— 繁體中文 / 简体中文 / English，預設跟隨系統語言，
-可在設定頁切換，切換後立即套用（系統匣選單需重新啟動程式）。
+**Languages** — English, 繁體中文 and 简体中文. Follows your system language by default and
+can be switched in Settings; changes apply immediately (the tray menu updates on next launch).
 
-**常駐** —— 關閉視窗會收進系統匣讓熱鍵持續有效；圖示會以顏色顯示狀態
-（正常／處理中／異常）；重複啟動不會開出第二份，而是把已在執行的視窗叫出來。
-
----
-
-## 關於系統管理員權限
-
-重置 PnP 裝置是 Windows 要求提權的操作，所以這個程式需要系統管理員權限。
-
-它**不會**在啟動時就丟一個沒頭沒尾的 UAC 對話框。未提權時程式照樣開得起來，
-只是重置按鈕停用，並在視窗上方顯示橫幅與「以管理員重新啟動」按鈕，由你決定。
-
-如果不想每次都按 UAC，打開設定頁的**開機自動啟動**即可 ——
-它建立的是工作排程器的登入工作，能以高權限直接啟動而不跳 UAC。
+**Runs in the background** — closing the window hides it to the tray so the hotkey keeps
+working; the tray icon shows status by colour (normal / working / problem); launching it
+again brings the existing window forward instead of starting a second copy.
 
 ---
 
-## 設定與資料
+## About administrator rights
 
-設定和紀錄都存在 `%APPDATA%\ScarlettGuard\`（設定頁有按鈕可直接開啟該資料夾）：
+Restarting a PnP device is an operation Windows requires elevation for, so this program
+needs administrator rights.
 
-| 檔案 | 內容 |
+It deliberately does **not** throw a context-free UAC prompt at you on launch. Without
+elevation the program still opens — the reset button is simply disabled, and a banner at the
+top of the window offers a "Restart as administrator" button. Your call.
+
+If you'd rather not click UAC every time, turn on **Start with Windows** in Settings — it
+creates a Task Scheduler logon task that launches elevated without a prompt.
+
+---
+
+## Settings and data
+
+Settings and logs live in `%APPDATA%\ScarlettGuard\` (the Settings page has a button that
+opens the folder):
+
+| File | Contents |
 |---|---|
-| `config.json` | 所有設定 |
-| `history.jsonl` | 事件紀錄 |
+| `config.json` | All settings |
+| `history.jsonl` | Event log |
 
-**熱鍵格式**使用 pynput 語法，例如 `<ctrl>+<alt>+r`、`<ctrl>+<shift>+<f9>`。
-輸入時會即時驗證；萬一設成無效組合，程式會自動退回上一個能用的，不會讓你失去熱鍵。
+**Hotkey format** uses pynput syntax, e.g. `<ctrl>+<alt>+r` or `<ctrl>+<shift>+<f9>`. It is
+validated as you type; if you do manage to set an invalid combination, the program falls back
+to the last working one rather than leaving you without a hotkey.
 
-**靜音門檻預設 −140 dB** 是依實機量測決定的：Scarlett Solo 閒置時的噪音底約 −104 dB，
-門檻必須遠低於它，否則正常待機就會被誤判成「訊號消失」。如果你調整這個值，
-請對照偵測頁儀表上顯示的實際數值。
-
----
-
-## 已知限制
-
-- **僅支援 Windows** —— 依賴 `pnputil` 與 Windows 的 PnP 管理指令。
-- **DAW 以 ASIO 獨佔裝置時，音訊監聽會被擋下。** 這是 Windows 音訊模型的正常行為，
-  程式會明白告訴你而不是靜默失敗。此時熱鍵與按鈕重置仍然完全可用。
-- **重置會中斷正在進行的錄音**，效果等同拔插 USB。
-- **自動偵測是經驗法則**，可能誤判也可能漏判。
-- 本工具**緩解症狀，不修復驅動本身**。
+**The silence threshold defaults to −140 dB**, chosen from real measurements: an idle Scarlett
+Solo sits at roughly −104 dB, so the threshold has to be far below that or normal idle would
+register as "signal loss". If you change it, check it against the live values shown on the
+Detection page.
 
 ---
 
-## 開發者資訊
+## Known limitations
+
+- **Windows only** — it relies on `pnputil` and Windows PnP management commands.
+- **Audio monitoring is blocked while a DAW holds the device exclusively via ASIO.** That is
+  normal Windows audio behaviour; the program tells you plainly instead of failing silently.
+  Hotkey and button resets still work.
+- **A reset interrupts recording in progress** — the effect is identical to unplugging USB.
+- **Automatic detection is heuristic** and can both miss problems and fire on false alarms.
+- This tool **treats the symptom; it does not fix the driver itself**.
+
+---
+
+## For developers
 
 <details>
-<summary>專案結構與技術棧</summary>
+<summary>Project layout and stack</summary>
 
 ```
-run.py                     啟動器（免安裝，直接執行）
-start.bat                  以系統管理員啟動
+run.py                     Launcher (no install step, just run it)
+start.bat                  Launch elevated
 src/scarlett_guard/
-  main.py                  組裝服務、系統匣與視窗
-  service.py               核心服務層：UI 與系統匣都只跟這一層對話
-  device.py                PnP 探索、重置、幽靈裝置移除
-  monitor.py               音訊異常偵測
-  hotkey.py                全域熱鍵
-  tray.py                  系統匣圖示
-  autostart.py             工作排程器整合
-  elevation.py             UAC 提權
-  single_instance.py       單一實例控制
-  config.py / history.py   設定與紀錄持久化
-  i18n.py                  後端文案
-  api.py                   JS ↔ Python 橋接
-  ui/                      介面（HTML / CSS / JS）
+  main.py                  Wires up service, tray and window
+  service.py               Core service layer — UI and tray talk only to this
+  device.py                PnP discovery, reset, phantom device removal
+  monitor.py               Audio anomaly detection
+  hotkey.py                Global hotkey
+  tray.py                  Tray icon
+  autostart.py             Task Scheduler integration
+  elevation.py             UAC elevation
+  single_instance.py       Single-instance control
+  config.py / history.py   Settings and log persistence
+  i18n.py                  Backend strings
+  api.py                   JS ↔ Python bridge
+  ui/                      Interface (HTML / CSS / JS)
 ```
 
-介面以 pywebview（WebView2）承載，音訊偵測用 sounddevice + numpy，
-全域熱鍵用 pynput，系統匣用 pystray。
+The interface runs in pywebview (WebView2); audio detection uses sounddevice + numpy, the
+global hotkey uses pynput, and the tray icon uses pystray.
 
-視覺與動態依循 Apple 的介面設計原則：半透明材質分層、捲動邊緣漸層取代硬分隔線、
-字距隨字級變化、所有按壓回饋在 pointer-down 當下發生，並支援
-`prefers-reduced-motion` / `prefers-reduced-transparency` / `prefers-contrast`
-與淺色深色主題。
+Visuals and motion follow Apple's interface design principles: layered translucent materials,
+gradient scroll edges instead of hard dividers, size-specific letter-spacing, press feedback
+on pointer-down rather than on release, plus support for `prefers-reduced-motion`,
+`prefers-reduced-transparency`, `prefers-contrast` and light/dark themes.
 
 </details>
 
 ---
 
-## 授權
+## Licence
 
 MIT
