@@ -339,110 +339,6 @@ body::before {
 .banner-body strong { font-size: 13px; font-weight: 620; }
 .banner-body span { font-size: 12.5px; color: var(--text-2); }
 
-/* ---------------------------------------------------------------- 狀態頁 */
-.hero { display: flex; flex-direction: column; gap: 20px; }
-
-.hero-status { display: flex; align-items: center; gap: 18px; }
-
-.status-ring {
-  position: relative;
-  width: 58px; height: 58px; flex: none;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--line);
-  transition: background var(--spring);
-}
-.status-core {
-  width: 20px; height: 20px; border-radius: 50%;
-  background: var(--grey);
-  transition: background var(--spring), transform var(--spring);
-}
-/* 裝置查詢進行中：緩慢呼吸，明確表示「還在查」而不是「查不到」 */
-.status-ring.is-loading .status-core { animation: breathe 1.6s ease-in-out infinite; }
-@keyframes breathe {
-  0%, 100% { opacity: .35; transform: scale(.82); }
-  50%      { opacity: 1;   transform: scale(1); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .status-ring.is-loading .status-core { animation: none; opacity: .6; }
-}
-
-.status-ring[data-tone="ok"]    { background: color-mix(in srgb, var(--green) 20%, transparent); }
-.status-ring[data-tone="ok"]    .status-core { background: var(--green); }
-.status-ring[data-tone="busy"]  { background: color-mix(in srgb, var(--amber) 20%, transparent); }
-.status-ring[data-tone="busy"]  .status-core { background: var(--amber); }
-.status-ring[data-tone="error"] { background: color-mix(in srgb, var(--red) 20%, transparent); }
-.status-ring[data-tone="error"] .status-core { background: var(--red); }
-
-.hero-text { min-width: 0; }
-.hero-text h2 {
-  margin: 0;
-  font-size: 20px; font-weight: 650;
-  letter-spacing: -0.017em;
-  line-height: 1.2;
-}
-.hero-text p { margin: 3px 0 0; font-size: 11.5px; color: var(--text-3); }
-
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.chip {
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 11.5px; font-weight: 500;
-  letter-spacing: 0.005em;
-  background: var(--line);
-  color: var(--text-2);
-}
-.chip[data-tone="ok"]    { background: color-mix(in srgb, var(--green) 17%, transparent); color: var(--green); }
-.chip[data-tone="warn"]  { background: color-mix(in srgb, var(--amber) 17%, transparent); color: var(--amber); }
-.chip[data-tone="error"] { background: color-mix(in srgb, var(--red) 17%, transparent);   color: var(--red); }
-
-/* 主要動作：整個程式的核心，視覺份量最重 */
-.reset-button {
-  position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 100%; padding: 17px 20px;
-  border: 0; border-radius: var(--radius);
-  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
-  color: #fff; font: inherit; cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 10px 26px rgba(10,132,255,.32);
-  transition: transform var(--press), box-shadow var(--press), filter var(--press);
-  overflow: hidden;
-}
-.reset-button:hover { filter: brightness(1.06); }
-.reset-button:active {
-  transform: scale(0.982);
-  box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 4px 12px rgba(10,132,255,.26);
-}
-.reset-button:disabled {
-  filter: grayscale(0.75) brightness(0.72);
-  cursor: not-allowed; box-shadow: none;
-}
-.reset-label { font-size: 16px; font-weight: 620; letter-spacing: -0.008em; }
-.reset-sub   { font-size: 12px; opacity: .82; }
-
-.reset-spinner {
-  position: absolute; inset: 0;
-  background: rgba(0,0,0,.22);
-  display: none; place-items: center;
-}
-.reset-spinner::after {
-  content: "";
-  width: 20px; height: 20px;
-  border: 2.4px solid rgba(255,255,255,.3);
-  border-top-color: #fff; border-radius: 50%;
-  animation: spin .7s linear infinite;
-}
-.reset-button.is-busy .reset-spinner { display: grid; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.stat { display: flex; flex-direction: column; gap: 2px; }
-.stat-label { font-size: 11.5px; color: var(--text-2); font-weight: 500; }
-.stat-value {
-  font-size: 26px; font-weight: 660;
-  letter-spacing: -0.024em; line-height: 1.15;
-}
-.stat-value small { font-size: 13px; font-weight: 500; color: var(--text-2); letter-spacing: 0; }
-.stat-foot { font-size: 11.5px; color: var(--text-3); }
 
 /* ---------------------------------------------------------------- 驅動模式 */
 /* 分段控制：選取指示器是共用的一片，會在兩段之間滑動。
@@ -474,6 +370,15 @@ body::before {
   will-change: transform;
 }
 .modeswitch[data-selected="asio"] .modeswitch-indicator { transform: translateX(100%); }
+
+/* 首次查詢中：緩慢呼吸，明確表示「還在查」而不是「查不到」 */
+.modeswitch.is-loading .modeswitch-indicator {
+  animation: modebreathe 2s ease-in-out infinite;
+}
+@keyframes modebreathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
 
 /* 切換進行中：指示器已經到位（立即回應），但明確標示為「尚未確認」 */
 .modeswitch.is-pending .modeswitch-indicator {
@@ -534,6 +439,86 @@ body::before {
 }
 
 .modecard { padding-bottom: 16px; }
+
+/* ---------------------------------------------------------------- 次要動作 */
+/* 重置裝置。刻意用扁平的淡色底而不是漸層 —— 整個畫面只有一個主角，
+   那個主角是模式切換器。重置是需要時才用的第二順位動作。 */
+.action {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  width: 100%; padding: 13px 20px;
+  border: 1px solid var(--line-hi);
+  border-radius: var(--radius);
+  background: var(--surface);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  color: var(--text); font: inherit; cursor: pointer;
+  transition: transform var(--press), border-color var(--press), background var(--press);
+  overflow: hidden;
+}
+.action:hover:not(:disabled) { border-color: var(--accent); }
+.action:active:not(:disabled) { transform: scale(0.985); }
+.action:disabled { opacity: .48; cursor: not-allowed; }
+.action-label { font-size: 14px; font-weight: 580; letter-spacing: -0.005em; }
+.action-sub   { font-size: 11.5px; color: var(--text-2); }
+
+.action-spinner {
+  position: absolute; inset: 0;
+  background: var(--well);
+  display: none; place-items: center;
+}
+.action-spinner::after {
+  content: "";
+  width: 18px; height: 18px;
+  border: 2.2px solid var(--line-hi);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+.action.is-busy .action-spinner { display: grid; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------- 收合區塊 */
+/* 進階內容往下一層，但一按就到、不用換頁。
+   高度用 grid-template-rows 0fr→1fr 過場 —— 這是唯一能對「內容高度未知」
+   做出真正動畫的純 CSS 手法，不必用 JS 量高度。 */
+.disclose {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--well);
+}
+
+.disclose-head {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 11px 14px;
+  border: 0; background: none;
+  color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 520;
+  text-align: left; cursor: pointer;
+  border-radius: var(--radius);
+  transition: color var(--press);
+}
+.disclose-head:hover { color: var(--text); }
+.disclose-chevron {
+  flex: none; width: 12px;
+  font-size: 15px; line-height: 1;
+  transition: transform var(--spring-fast);
+}
+.disclose[data-open="true"] .disclose-chevron { transform: rotate(90deg); }
+.disclose[data-open="true"] .disclose-head { color: var(--text); }
+
+.disclose-note {
+  margin-left: auto;
+  font-size: 11.5px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.disclose-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--spring);
+}
+.disclose[data-open="true"] .disclose-body { grid-template-rows: 1fr; }
+.disclose-inner { overflow: hidden; padding: 0 14px; }
+.disclose[data-open="true"] .disclose-inner { padding-bottom: 13px; }
 
 /* ---------------------------------------------------------------- 鍵值表 */
 .kv { margin: 10px 0 0; display: grid; grid-template-columns: 150px 1fr; gap: 7px 14px; }
@@ -663,47 +648,6 @@ input[type="range"]::-webkit-slider-thumb {
 }
 input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.14); }
 
-/* ---------------------------------------------------------------- 儀表 */
-.meterbox {
-  margin-top: 14px; padding: 13px;
-  border-radius: var(--radius);
-  background: rgba(0,0,0,.2);
-  border: 1px solid var(--line);
-}
-@media (prefers-color-scheme: light) { .meterbox { background: rgba(0,0,0,.04); } }
-
-.meter-head {
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 12px; margin-bottom: 9px;
-  font-size: 12px; color: var(--text-2);
-}
-.wave { height: 62px; margin-bottom: 11px; }
-.wave canvas { width: 100%; height: 100%; display: block; }
-
-.meter-rows { display: flex; flex-direction: column; gap: 7px; }
-.meter-row {
-  display: grid; grid-template-columns: 52px 1fr 68px;
-  align-items: center; gap: 10px;
-  font-size: 11.5px; color: var(--text-2);
-}
-.bar {
-  position: relative; height: 6px;
-  border-radius: 99px; background: var(--line-hi);
-  overflow: hidden;
-}
-.bar i {
-  position: absolute; inset: 0 auto 0 0;
-  width: 0%; border-radius: 99px;
-  background: linear-gradient(90deg, var(--green), var(--accent));
-  transition: width 90ms linear;
-}
-.bar u {
-  position: absolute; top: -2px; bottom: -2px;
-  width: 2px; left: 0;
-  background: var(--amber); opacity: .9;
-  transition: left 200ms ease-out;
-}
-.meter-row .mono { text-align: right; }
 
 /* ---------------------------------------------------------------- 時間軸 */
 .timeline { list-style: none; margin: 14px 0 0; padding: 0; }
@@ -830,8 +774,10 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.14); }
     transition-duration: 120ms !important;
   }
   /* 減少動態不代表沒有回饋 —— 保留不會造成前庭不適的透明度變化 */
-  .nav-item:active, .btn:active, .reset-button:active { transform: none; opacity: .78; }
+  .nav-item:active, .btn:active, .action:active { transform: none; opacity: .78; }
   .mode-option:active { transform: none; opacity: .78; }
+  /* 收合改成瞬間切換：高度動畫是最容易造成不適的那一種 */
+  .disclose-body { transition: none !important; }
   .toast { animation: fade-in 140ms ease-out; }
   /* 指示器仍然要移動（位置就是狀態，不能不動），
      但改成幾乎瞬移，不留下橫向掃過畫面的軌跡 */
@@ -839,7 +785,7 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.14); }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .sidebar, .topbar, .card, .toast {
+  .sidebar, .topbar, .card, .toast, .action {
     background: var(--surface-solid);
     backdrop-filter: none; -webkit-backdrop-filter: none;
   }

@@ -1,20 +1,19 @@
-"""事件紀錄與統計。
+"""事件紀錄。
 
-用 JSON Lines 保存，方便事後直接用文字工具或 pandas 分析
-「到底多久壞一次、是不是真的和 CPU 負載相關」。
+用 JSON Lines 保存，切換或重置失敗時可以事後回溯到底發生了什麼 ——
+UI 上的 toast 一閃就沒了，沒有這個檔案就什麼都查不到。
 """
 from __future__ import annotations
 
 import json
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
-from .i18n import t
 from .paths import HISTORY_PATH
 
-_MAX_LINES = 5000
+_MAX_LINES = 2000
 
 
 class History:
@@ -55,7 +54,7 @@ class History:
             return []
         return records
 
-    def recent(self, limit: int = 100) -> list[dict[str, Any]]:
+    def recent(self, limit: int = 30) -> list[dict[str, Any]]:
         return list(reversed(self._read_all()[-limit:]))
 
     def clear(self) -> None:
@@ -78,64 +77,3 @@ class History:
                         fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
             except OSError:
                 pass
-
-    def resets_since(self, seconds: float) -> int:
-        cutoff = time.time() - seconds
-        return sum(
-            1
-            for r in self._read_all()
-            if r.get("event") in {"reset_manual", "reset_hotkey", "reset_auto", "reset_tray"}
-            and r.get("ts", 0) >= cutoff
-            and r.get("ok", True)
-        )
-
-    def stats(self) -> dict[str, Any]:
-        records = self._read_all()
-        resets = [
-            r
-            for r in records
-            if r.get("event", "").startswith("reset_") and r.get("ok", True)
-        ]
-        anomalies = [r for r in records if r.get("event") == "anomaly"]
-
-        now = time.time()
-        day = 86400.0
-        last_reset = resets[-1] if resets else None
-
-        # 平均間隔：只有兩次以上才有意義
-        mean_gap_hours = None
-        if len(resets) >= 2:
-            timestamps = sorted(r.get("ts", 0.0) for r in resets)
-            gaps = [b - a for a, b in zip(timestamps, timestamps[1:]) if b > a]
-            if gaps:
-                mean_gap_hours = round(sum(gaps) / len(gaps) / 3600.0, 1)
-
-        by_reason: dict[str, int] = {}
-        for rec in anomalies:
-            reason = str(rec.get("reason", "unknown"))
-            by_reason[reason] = by_reason.get(reason, 0) + 1
-
-        return {
-            "total_resets": len(resets),
-            "resets_24h": sum(1 for r in resets if now - r.get("ts", 0) < day),
-            "resets_7d": sum(1 for r in resets if now - r.get("ts", 0) < 7 * day),
-            "total_anomalies": len(anomalies),
-            "anomalies_by_reason": by_reason,
-            "mean_gap_hours": mean_gap_hours,
-            "last_reset_iso": last_reset.get("iso") if last_reset else None,
-            "last_reset_ago": _humanise(now - last_reset["ts"]) if last_reset else None,
-        }
-
-
-def _humanise(seconds: float) -> str:
-    delta = timedelta(seconds=max(0, int(seconds)))
-    days = delta.days
-    hours, rem = divmod(delta.seconds, 3600)
-    minutes = rem // 60
-    if days:
-        return t("time.days", n=days)
-    if hours:
-        return t("time.hours", n=hours)
-    if minutes:
-        return t("time.minutes", n=minutes)
-    return t("time.now")

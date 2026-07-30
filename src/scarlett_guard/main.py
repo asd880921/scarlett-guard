@@ -40,9 +40,9 @@ class Application:
             _WINDOW_TITLE,
             str(ui_dir() / "index.html"),
             js_api=self.api,
-            width=1080,
-            height=760,
-            min_size=(880, 620),
+            width=880,
+            height=620,
+            min_size=(760, 560),
             background_color="#0B0B0F",
             hidden=self._start_hidden,
             easy_drag=False,
@@ -53,9 +53,7 @@ class Application:
         self.tray = Tray(
             on_reset=lambda: self.service.reset("tray"),
             on_show=self._show_window,
-            on_toggle_monitor=self._toggle_monitor,
             on_quit=self.quit,
-            monitor_enabled=lambda: bool(self.service.config.get("monitor_enabled")),
             on_switch_mode=lambda mode: self.service.switch_driver_mode(mode, "tray"),
             # 用快取的探測結果 —— 選單每次開啟都會呼叫 checked，
             # 在那裡跑 PowerShell 會讓選單卡好幾秒才展開
@@ -101,11 +99,6 @@ class Application:
         except Exception:
             pass
 
-    def _toggle_monitor(self, enabled: bool) -> None:
-        result = self.service.set_monitor_enabled(enabled)
-        self._push("monitor", result.get("state", {}))
-        self._push("settings", self.service.config.as_dict())
-
     def quit(self) -> None:
         if self._quitting:
             return
@@ -136,11 +129,6 @@ class Application:
 
         if channel == "busy" and self.tray is not None:
             self.tray.set_state("busy" if payload.get("busy") else "ok")
-
-        if channel == "anomaly" and self.tray is not None:
-            self.tray.set_state("error")
-            if self.service.config.get("notify_on_reset"):
-                self.tray.notify(t("tray.anomaly"), str(payload.get("label", "")))
 
         if channel == "history" and self.tray is not None:
             event = str(payload.get("event", ""))
@@ -174,27 +162,23 @@ class Application:
             pass
 
     def _poll_loop(self) -> None:
-        """定期把即時資料推給 UI。
+        """定期把裝置狀態推給 UI。
 
-        監聽儀表需要高頻更新（10Hz），裝置狀態則因為 PowerShell 查詢很慢
-        而降到 5 秒一次。
+        兩個查詢都要跑 PowerShell（各約兩秒），所以刻意錯開、也刻意查得疏：
+        裝置狀態 10 秒一次，驅動模式 30 秒一次。驅動模式幾乎不會自己改變，
+        但一定要定期查 —— 系統匣選單的勾號讀的是這份快取，沒有人先把它熱起來的話，
+        第一次展開選單會卡兩三秒。
         """
         tick = 0
         while not self._quitting:
-            time.sleep(0.1)
+            time.sleep(1.0)
             if not self._ui_ready.is_set():
                 continue
             tick += 1
             try:
-                if self.service.monitor.running:
-                    self._push("monitor", self.service.monitor_state())
-                if tick % 50 == 0:
+                if tick % 10 == 0:
                     self._push("device", self.service.snapshot())
-                    self._push("stats", self.service.history.stats())
-                # 驅動模式幾乎不會自己改變，所以查得比裝置狀態更疏。
-                # 但一定要定期查：系統匣選單的勾號讀的是這份快取，
-                # 沒有人先把它熱起來的話，第一次展開選單會卡兩三秒。
-                if tick % 300 == 0:
+                if tick % 30 == 0:
                     self._push("driver_mode", self.service.driver_mode())
             except Exception:
                 continue

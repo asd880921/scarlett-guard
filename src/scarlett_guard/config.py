@@ -19,43 +19,16 @@ DEFAULTS: dict[str, Any] = {
     # 空字串 = 自動從 driver store 找 focusritecustom.inf。
     # 只有在自動偵測失敗時才需要手動指定。
     "focusrite_inf_path": "",
-    # 切換後等裝置安定的秒數。切換牽動整條 USB 裝置樹的重新列舉，
-    # 比單純 restart-device 更久，所以預設比 post_reset_settle_seconds 保守。
-    "mode_settle_seconds": 2.0,
     # --- 熱鍵 ---
     "hotkey_enabled": True,
     "hotkey": "<ctrl>+<alt>+r",
-    # --- 自動偵測與自動復原 ---
-    "monitor_enabled": False,
-    "auto_recover": False,
-    # 監聽哪一個輸入裝置（空 = 自動找 Focusrite 的錄音端點）
-    "monitor_input_device": "",
-    # 0 = 跟隨裝置目前的預設取樣率。硬指定成裝置不支援的值會直接開不起來，
-    # 所以預設交給裝置自己決定。
-    "monitor_samplerate": 0,
-    "monitor_blocksize": 1024,
-    # 偵測器個別開關
-    "detect_stall": True,
-    "detect_silence": True,
-    "detect_noise": True,
-    # 門檻
-    "stall_seconds": 2.0,          # 多久沒收到音訊回呼視為 stream 凍結
-    "silence_seconds": 8.0,        # 位元級全零持續多久視為 ADC 死掉
-    # 低於此值視為「數位靜音」。實測 Scarlett Solo 閒置時的噪音底約 -104 dB，
-    # 所以門檻必須遠低於它 —— 真正的位元級全零會是 -240 dB（EPS 夾制後的值），
-    # 而任何一個非零取樣都會把 RMS 拉到 -170 dB 以上。
-    "silence_floor_db": -140.0,
-    "noise_seconds": 1.5,          # 雜訊特徵需持續多久
-    "noise_margin_db": 18.0,       # 高出基準噪音底多少 dB
-    "noise_zcr": 0.30,             # 過零率門檻（電流音/白噪遠高於人聲）
-    # 安全閥
-    "cooldown_seconds": 30.0,      # 兩次自動重置之間的最短間隔
-    "max_resets_per_hour": 6,      # 超過就停用自動復原，避免無限迴圈
     # --- 一般 ---
-    "start_minimised": False,
     "close_to_tray": True,
     "notify_on_reset": True,
+    # 下面兩個是等裝置安定的秒數。刻意不放進 UI —— 預設值已經實測夠用，
+    # 真的需要調整的人可以直接改 config.json。
     "post_reset_settle_seconds": 3.0,
+    "mode_settle_seconds": 2.0,
 }
 
 
@@ -78,6 +51,7 @@ class Config:
             return
         with self._lock:
             for key, value in raw.items():
+                # 不認識的鍵一律忽略 —— 舊版留下的設定會自然被淘汰
                 if key in DEFAULTS:
                     self._data[key] = value
 

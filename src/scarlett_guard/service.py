@@ -1,4 +1,4 @@
-"""把設定、裝置、監聽、熱鍵、紀錄串起來的核心服務層。
+"""把設定、裝置、驅動模式、熱鍵、紀錄串起來的核心服務層。
 
 UI（pywebview）與系統匣（pystray）都只跟這一層對話，
 所以兩邊的行為必然一致。
@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from . import autostart, device, driver_mode, hotkey, i18n, monitor
+from . import autostart, device, driver_mode, hotkey, i18n
 from .i18n import t
 from .config import Config
 from .history import History
@@ -23,21 +23,15 @@ class GuardService:
         self.history = History()
         self.history.trim()
 
-        self._reset_lock = threading.Lock()
+        # 重置與模式切換共用同一把鎖：兩者都會讓裝置重新列舉，同時進行必然互踩
+        self._action_lock = threading.Lock()
         self._listeners: list[Callable[[str, dict[str, Any]], None]] = []
         self._busy = False
-        self._auto_recover_suspended = False
-        self._last_auto_reset_at = 0.0
         self._cached_snapshot: dict[str, Any] = {}
         self._snapshot_at = 0.0
         self._cached_mode: dict[str, Any] = {}
         self._mode_at = 0.0
 
-        self.monitor = monitor.AudioMonitor(
-            self.config,
-            on_anomaly=self._handle_anomaly,
-            on_state_change=lambda: self._emit("monitor", self.monitor_state()),
-        )
         self.hotkeys = hotkey.HotkeyManager(on_trigger=lambda: self.reset("hotkey"))
 
     # ------------------------------------------------------------------
@@ -46,12 +40,9 @@ class GuardService:
     def start(self) -> None:
         self.history.log("app_start", elevated=device.is_elevated())
         self.hotkeys.apply(self.config.get("hotkey"), self.config.get("hotkey_enabled"))
-        if self.config.get("monitor_enabled"):
-            self.monitor.start()
 
     def shutdown(self) -> None:
         self.hotkeys.stop()
-        self.monitor.stop()
         self.history.log("app_stop")
 
     # ------------------------------------------------------------------
@@ -77,7 +68,6 @@ class GuardService:
             return self._cached_snapshot
         data = device.snapshot(self.config.get("device_instance_id"))
         data["busy"] = self._busy
-        data["auto_recover_suspended"] = self._auto_recover_suspended
         self._cached_snapshot = data
         self._snapshot_at = now
         return data
@@ -85,6 +75,26 @@ class GuardService:
     def invalidate_snapshot(self) -> None:
         self._snapshot_at = 0.0
         self._mode_at = 0.0
+
+    def _emit_fresh_state(self) -> None:
+        """動作收尾後在背景強制查一次並推送給 UI 與系統匣。
+
+        刻意放到背景執行緒：這兩支 PowerShell 合起來要五到八秒，擺在呼叫路徑上
+        會讓「已切換完成」的提示晚好幾秒才出現 —— 而 busy 早就解除了，
+        使用者會看到按鈕先解鎖、結果才姍姍來遲，讀起來很不一致。
+
+        這是唯一該用 force 的地方；查完之後快取是熱的，前端隨後的補查
+        會直接命中快取，不會再多跑 PowerShell。
+        """
+        def run() -> None:
+            try:
+                self._emit("device", self.snapshot(force=True))
+                self._emit("driver_mode", self.driver_mode(force=True))
+            except Exception:
+                # 這只是 UI 的狀態刷新，失敗不該影響任何實際動作
+                pass
+
+        threading.Thread(target=run, name="refresh", daemon=True).start()
 
     # ------------------------------------------------------------------
     # 驅動模式
@@ -105,22 +115,13 @@ class GuardService:
         return state
 
     def switch_driver_mode(self, mode: str, source: str = "manual") -> dict[str, Any]:
-        """切換驅動模式。
-
-        和 reset() 共用同一把鎖 —— 兩者都會讓裝置重新列舉，
-        同時進行必然互踩，而且會讓監聽的重啟邏輯錯亂。
-        """
-        if not self._reset_lock.acquire(blocking=False):
+        """切換驅動模式。"""
+        if not self._action_lock.acquire(blocking=False):
             return {"ok": False, "message": t("mode.busy"), "detail": ""}
 
         try:
             self._busy = True
             self._emit("busy", {"busy": True, "source": f"mode:{source}"})
-
-            # 切換過程中裝置會消失再出現，監聽一定會誤判成 stall
-            was_monitoring = self.monitor.running
-            if was_monitoring:
-                self.monitor.pause()
 
             result = driver_mode.switch_mode(
                 mode,
@@ -128,43 +129,24 @@ class GuardService:
                 settle_seconds=float(self.config.get("mode_settle_seconds", 2.0)),
             )
 
-            if was_monitoring:
-                # 換驅動後裝置索引與端點名稱都會變，串流必須整個重開。
-                # 錄音模式下 Focusrite 端點名稱不同，監聽可能開不起來 ——
-                # 那不是錯誤，只要讓使用者知道就好。
-                self.monitor.stop()
-                ok, message = self.monitor.start()
-                if not ok:
-                    result.detail = (
-                        result.detail + "\n" + t("mon.restartfail", message=message)
-                    ).strip()
-
             self.invalidate_snapshot()
             self._log_mode_switch(source, mode, result)
             return result.to_dict()
         finally:
             self._busy = False
             self._emit("busy", {"busy": False, "source": f"mode:{source}"})
-            self._emit("device", self.snapshot(force=True))
-            self._emit("driver_mode", self.driver_mode(force=True))
-            self._reset_lock.release()
+            self._emit_fresh_state()
+            self._action_lock.release()
 
     def repair_driver_binding(self) -> dict[str, Any]:
-        """救回卡在「沒有驅動」狀態的裝置。"""
-        if not self._reset_lock.acquire(blocking=False):
+        """救回卡在「沒有驅動」或「音訊路徑沒起來」狀態的裝置。"""
+        if not self._action_lock.acquire(blocking=False):
             return {"ok": False, "message": t("mode.busy"), "detail": ""}
         try:
             self._busy = True
             self._emit("busy", {"busy": True, "source": "mode:repair"})
-            was_monitoring = self.monitor.running
-            if was_monitoring:
-                self.monitor.pause()
 
             result = driver_mode.repair()
-
-            if was_monitoring:
-                self.monitor.stop()
-                self.monitor.start()
 
             self.invalidate_snapshot()
             self._log_mode_switch("repair", result.extra.get("mode", ""), result)
@@ -172,9 +154,8 @@ class GuardService:
         finally:
             self._busy = False
             self._emit("busy", {"busy": False, "source": "mode:repair"})
-            self._emit("device", self.snapshot(force=True))
-            self._emit("driver_mode", self.driver_mode(force=True))
-            self._reset_lock.release()
+            self._emit_fresh_state()
+            self._action_lock.release()
 
     def _log_mode_switch(
         self, source: str, requested: str, result: device.ActionResult
@@ -191,11 +172,11 @@ class GuardService:
         self._emit("history", record)
 
     # ------------------------------------------------------------------
-    # 重置 —— 整個程式的核心動作
+    # 重置 —— 軟體版拔插
     # ------------------------------------------------------------------
     def reset(self, source: str = "manual") -> dict[str, Any]:
-        """軟體版拔插。source: manual | hotkey | tray | auto"""
-        if not self._reset_lock.acquire(blocking=False):
+        """source: manual | hotkey | tray"""
+        if not self._action_lock.acquire(blocking=False):
             return {"ok": False, "message": t("dev.busy"), "detail": ""}
 
         try:
@@ -211,11 +192,6 @@ class GuardService:
                 self._log_reset(source, result, "")
                 return result.to_dict()
 
-            # 重置期間 stream 必然中斷，先暫停偵測否則一定誤判成 stall
-            was_monitoring = self.monitor.running
-            if was_monitoring:
-                self.monitor.pause()
-
             result = device.restart_device(primary.instance_id)
 
             if result.ok:
@@ -224,23 +200,14 @@ class GuardService:
                 if settle > 0:
                     time.sleep(settle)
 
-            if was_monitoring:
-                # 裝置重新列舉後索引會變，串流必須整個重開
-                self.monitor.stop()
-                ok, message = self.monitor.start()
-                if not ok:
-                    result.detail = (
-                        result.detail + "\n" + t("mon.restartfail", message=message)
-                    ).strip()
-
             self.invalidate_snapshot()
             self._log_reset(source, result, primary.friendly_name)
             return result.to_dict()
         finally:
             self._busy = False
             self._emit("busy", {"busy": False, "source": source})
-            self._emit("device", self.snapshot(force=True))
-            self._reset_lock.release()
+            self._emit_fresh_state()
+            self._action_lock.release()
 
     def _log_reset(self, source: str, result: device.ActionResult, device_name: str) -> None:
         record = self.history.log(
@@ -253,79 +220,6 @@ class GuardService:
             method=result.extra.get("method", ""),
         )
         self._emit("history", record)
-
-    # ------------------------------------------------------------------
-    # 自動復原
-    # ------------------------------------------------------------------
-    def _handle_anomaly(self, anomaly: monitor.Anomaly) -> None:
-        record = self.history.log(
-            "anomaly",
-            reason=anomaly.reason,
-            label=anomaly.label,
-            detail=anomaly.detail,
-            metrics=anomaly.metrics,
-            auto_recover=bool(self.config.get("auto_recover")),
-        )
-        self._emit("anomaly", record)
-        self._emit("history", record)
-
-        if not self.config.get("auto_recover") or self._auto_recover_suspended:
-            self.monitor.resume()
-            return
-
-        # 安全閥一：冷卻時間
-        cooldown = float(self.config.get("cooldown_seconds", 30.0))
-        since_last = time.monotonic() - self._last_auto_reset_at
-        if self._last_auto_reset_at and since_last < cooldown:
-            self.history.log(
-                "auto_skipped",
-                reason="cooldown",
-                detail=t(
-                    "auto.cooldown", since=f"{since_last:.0f}", cooldown=f"{cooldown:.0f}"
-                ),
-            )
-            self.monitor.resume()
-            return
-
-        # 安全閥二：每小時上限，避免在裝置真的壞掉時無限重置
-        limit = int(self.config.get("max_resets_per_hour", 6))
-        if limit > 0 and self.history.resets_since(3600) >= limit:
-            self._auto_recover_suspended = True
-            record = self.history.log(
-                "auto_suspended",
-                detail=t("auto.suspended", limit=limit),
-            )
-            self._emit("auto_suspended", record)
-            self._emit("history", record)
-            self.monitor.resume()
-            return
-
-        self._last_auto_reset_at = time.monotonic()
-        self.reset("auto")
-        self.monitor.resume()
-
-    def resume_auto_recover(self) -> None:
-        self._auto_recover_suspended = False
-        self._last_auto_reset_at = 0.0
-        self._emit("device", self.snapshot(force=True))
-
-    # ------------------------------------------------------------------
-    # 監聽
-    # ------------------------------------------------------------------
-    def monitor_state(self) -> dict[str, Any]:
-        state = self.monitor.telemetry()
-        state["auto_recover"] = bool(self.config.get("auto_recover"))
-        state["auto_recover_suspended"] = self._auto_recover_suspended
-        return state
-
-    def set_monitor_enabled(self, enabled: bool) -> dict[str, Any]:
-        self.config.set("monitor_enabled", bool(enabled))
-        if enabled:
-            ok, message = self.monitor.start()
-        else:
-            self.monitor.stop()
-            ok, message = True, t("mon.stopped")
-        return {"ok": ok, "message": message, "state": self.monitor_state()}
 
     # ------------------------------------------------------------------
     # 設定
@@ -352,22 +246,6 @@ class GuardService:
                 self.config.set("hotkey", before["hotkey"])
                 self.hotkeys.apply(before["hotkey"], before["hotkey_enabled"])
                 messages.append(t("hk.reverted", combo=before["hotkey"]))
-
-        needs_restart = any(
-            after[key] != before[key]
-            for key in ("monitor_input_device", "monitor_samplerate", "monitor_blocksize")
-        )
-        if needs_restart and self.monitor.running:
-            self.monitor.stop()
-            ok, message = self.monitor.start()
-            messages.append(message)
-
-        if after["monitor_enabled"] != before["monitor_enabled"]:
-            result = self.set_monitor_enabled(after["monitor_enabled"])
-            messages.append(result["message"])
-
-        if after["auto_recover"] and not before["auto_recover"]:
-            self._auto_recover_suspended = False
 
         self._emit("settings", after)
         return {"ok": True, "config": after, "messages": messages}
@@ -412,6 +290,3 @@ class GuardService:
     def set_autostart(self, enabled: bool) -> dict[str, Any]:
         ok, message = autostart.enable() if enabled else autostart.disable()
         return {"ok": ok, "message": message, "enabled": autostart.is_enabled()}
-
-    def input_devices(self) -> list[dict[str, Any]]:
-        return monitor.list_input_devices()

@@ -66,18 +66,15 @@ class Api:
     def bootstrap(self) -> dict[str, Any]:
         """開頁時一次拿齊「立即可得」的資料。
 
-        刻意**不**包含裝置狀態：那需要跑 PowerShell，要花兩三秒。
-        把它放進來會讓設定、紀錄、路徑這些本來就在記憶體裡的資料
-        一起被卡住，整個 UI 空白好幾秒。前端拿到這包之後再自己去要裝置狀態。
+        刻意**不**包含裝置狀態與驅動模式：那需要跑 PowerShell，要花兩三秒。
+        把它放進來會讓設定、紀錄、路徑這些本來就在記憶體裡的資料一起被卡住，
+        整個 UI 空白好幾秒。前端拿到這包之後再自己去要。
         """
         return {
             "ok": True,
             "device_pending": True,
             "config": self._service.config.as_dict(),
-            "monitor": self._service.monitor_state(),
-            "stats": self._service.history.stats(),
-            "history": self._service.history.recent(60),
-            "input_devices": self._service.input_devices(),
+            "history": self._service.history.recent(30),
             "autostart": self._service.autostart_state(),
             "hotkey_active": self._service.hotkeys.active,
             "hotkey_error": self._service.hotkeys.error,
@@ -95,28 +92,16 @@ class Api:
 
     @_safe
     def driver_mode(self, force: bool = False) -> dict[str, Any]:
-        """目前的驅動模式。和 device_status 一樣需要跑 PowerShell，所以不放進 bootstrap。"""
+        """目前的驅動模式。和 device_status 一樣需要跑 PowerShell，不放進 bootstrap。"""
         return {"ok": True, "driver_mode": self._service.driver_mode(force=force)}
 
     @_safe
-    def monitor_status(self) -> dict[str, Any]:
-        return {"ok": True, "monitor": self._service.monitor_state()}
-
-    @_safe
-    def stats(self) -> dict[str, Any]:
-        return {"ok": True, "stats": self._service.history.stats()}
-
-    @_safe
-    def history(self, limit: int = 60) -> dict[str, Any]:
+    def history(self, limit: int = 30) -> dict[str, Any]:
         return {"ok": True, "history": self._service.history.recent(int(limit))}
 
     # ------------------------------------------------------------------
     # 動作
     # ------------------------------------------------------------------
-    @_safe
-    def reset(self, source: str = "manual") -> dict[str, Any]:
-        return self._service.reset(source or "manual")
-
     @_safe
     def switch_driver_mode(self, mode: str) -> dict[str, Any]:
         return self._service.switch_driver_mode(str(mode or ""), "manual")
@@ -126,14 +111,8 @@ class Api:
         return self._service.repair_driver_binding()
 
     @_safe
-    def set_monitor_enabled(self, enabled: bool) -> dict[str, Any]:
-        return self._service.set_monitor_enabled(bool(enabled))
-
-    @_safe
-    def resume_auto_recover(self) -> dict[str, Any]:
-        self._service.resume_auto_recover()
-        # 提示文字由前端負責（toast.autoresume），這裡不重複產生
-        return {"ok": True}
+    def reset(self, source: str = "manual") -> dict[str, Any]:
+        return self._service.reset(source or "manual")
 
     @_safe
     def update_settings(self, values: dict[str, Any]) -> dict[str, Any]:
@@ -168,10 +147,6 @@ class Api:
     def clear_history(self) -> dict[str, Any]:
         self._service.history.clear()
         return {"ok": True}
-
-    @_safe
-    def input_devices(self) -> dict[str, Any]:
-        return {"ok": True, "input_devices": self._service.input_devices()}
 
     # ------------------------------------------------------------------
     # 視窗與權限

@@ -19,28 +19,16 @@
         </div>
         <div class="brand-text">
           <span class="brand-name">Scarlett Guard</span>
-          <span class="brand-sub" id="brand-version">v1.1.0</span>
+          <span class="brand-sub" id="brand-version">v2.0</span>
         </div>
       </div>
 
       <nav class="nav" id="nav">
         <button class="nav-item is-active" data-view="status">
-          <span class="nav-glyph">◎</span><span data-i18n="nav.status">狀態</span>
-        </button>
-        <button class="nav-item" data-view="mode">
-          <span class="nav-glyph">⇄</span><span data-i18n="nav.mode">驅動模式</span>
-        </button>
-        <button class="nav-item" data-view="detect">
-          <span class="nav-glyph">∿</span><span data-i18n="nav.detect">自動偵測</span>
+          <span class="nav-glyph">⇄</span><span data-i18n="nav.status">狀態</span>
         </button>
         <button class="nav-item" data-view="settings">
           <span class="nav-glyph">⚙</span><span data-i18n="nav.settings">設定</span>
-        </button>
-        <button class="nav-item" data-view="history">
-          <span class="nav-glyph">≡</span><span data-i18n="nav.history">紀錄</span>
-        </button>
-        <button class="nav-item" data-view="maintenance">
-          <span class="nav-glyph">⌫</span><span data-i18n="nav.maintenance">維護</span>
         </button>
       </nav>
 
@@ -83,79 +71,21 @@
                       data-i18n="banner.elev.action"></button>
             </div>
 
-            <div class="banner banner-warn" id="suspend-banner" hidden>
-              <div class="banner-body">
-                <strong data-i18n="banner.suspend.title"></strong>
-                <span id="suspend-detail" data-i18n="banner.suspend.body"></span>
-              </div>
-              <button class="btn btn-sm" id="btn-resume-auto"
-                      data-i18n="banner.suspend.action"></button>
-            </div>
-
             <!-- ============ 狀態 ============ -->
             <section class="view is-active" data-view="status">
-              <div class="hero card">
-                <div class="hero-status">
-                  <div class="status-ring" id="status-ring" data-tone="idle">
-                    <div class="status-core"></div>
-                  </div>
-                  <div class="hero-text">
-                    <h2 id="device-name" data-i18n="status.detecting"></h2>
-                    <p id="device-id" class="mono">—</p>
-                    <div class="chips" id="device-chips"></div>
-                  </div>
-                </div>
 
-                <button class="reset-button" id="btn-reset">
-                  <span class="reset-label" data-i18n="reset.label"></span>
-                  <span class="reset-sub" id="reset-hint" data-i18n="reset.sub"></span>
-                  <span class="reset-spinner" aria-hidden="true"></span>
-                </button>
-              </div>
-
-              <div class="grid grid-3">
-                <div class="card stat">
-                  <span class="stat-label" data-i18n="stat.last"></span>
-                  <span class="stat-value" id="stat-last">—</span>
-                  <span class="stat-foot" id="stat-last-iso" data-i18n="stat.none"></span>
-                </div>
-                <div class="card stat">
-                  <span class="stat-label" data-i18n="stat.24h"></span>
-                  <span class="stat-value" id="stat-24h">0</span>
-                  <span class="stat-foot" id="stat-7d"></span>
-                </div>
-                <div class="card stat">
-                  <span class="stat-label" data-i18n="stat.gap"></span>
-                  <span class="stat-value" id="stat-gap">—</span>
-                  <span class="stat-foot" data-i18n="stat.gap.foot"></span>
-                </div>
-              </div>
-
-              <div class="card">
-                <div class="card-head">
-                  <h3 data-i18n="card.driver"></h3>
-                  <span class="card-note" id="driver-mode">—</span>
-                </div>
-                <dl class="kv" id="driver-kv"></dl>
-                <p class="hint" id="driver-hint"></p>
-              </div>
-            </section>
-
-            <!-- ============ 驅動模式 ============ -->
-            <section class="view" data-view="mode">
-              <!-- 裝置沒有驅動時，這是唯一的出路，所以放在最上面 -->
+              <!-- 裝置沒有可用驅動時，這是唯一的出路，所以放在最上面 -->
               <div class="banner banner-warn" id="mode-broken-banner" hidden>
                 <div class="banner-body">
                   <strong data-i18n="mode.broken.title"></strong>
-                  <span id="mode-broken-detail" data-i18n="mode.broken.body"></span>
+                  <span id="mode-broken-detail"></span>
                 </div>
                 <button class="btn btn-primary btn-sm" id="btn-repair-mode"
                         data-i18n="mode.broken.action"></button>
               </div>
 
+              <!-- 主角：模式切換器。選取指示器是共用的一片，會在兩段之間滑動 -->
               <div class="card modecard">
-                <!-- 選取指示器是共用的一片，會在兩段之間滑動 ——
-                     位置本身就是狀態，不需要額外的勾選符號 -->
                 <div class="modeswitch" id="modeswitch" role="radiogroup"
                      data-i18n-aria="mode.switch.aria">
                   <span class="modeswitch-indicator" id="modeswitch-indicator" aria-hidden="true"></span>
@@ -164,177 +94,61 @@
                     <span class="mode-glyph" aria-hidden="true">🛡</span>
                     <span class="mode-name" data-i18n="mode.daily.name"></span>
                     <span class="mode-for" data-i18n="mode.daily.for"></span>
-                    <span class="mode-trade" data-i18n="mode.daily.trade"></span>
                   </button>
 
                   <button class="mode-option" data-mode="asio" role="radio" aria-checked="false">
                     <span class="mode-glyph" aria-hidden="true">🎛</span>
                     <span class="mode-name" data-i18n="mode.asio.name"></span>
                     <span class="mode-for" data-i18n="mode.asio.for"></span>
-                    <span class="mode-trade" data-i18n="mode.asio.trade"></span>
                   </button>
                 </div>
 
                 <p class="mode-status" id="mode-status" data-i18n="mode.detecting"></p>
-                <p class="hint" data-i18n-html="mode.hint"></p>
               </div>
 
-              <div class="card">
-                <div class="card-head">
-                  <h3 data-i18n="mode.evidence"></h3>
-                  <span class="card-note" id="mode-verdict">—</span>
-                </div>
-                <p class="hint subtle" data-i18n="mode.evidence.hint"></p>
-                <dl class="kv" id="mode-kv"></dl>
-              </div>
+              <!-- 次要動作：視覺量體刻意低於模式切換器 -->
+              <button class="action" id="btn-reset">
+                <span class="action-label" data-i18n="reset.label"></span>
+                <span class="action-sub" id="reset-hint"></span>
+                <span class="action-spinner" aria-hidden="true"></span>
+              </button>
 
-              <div class="card">
-                <div class="card-head"><h3 data-i18n="mode.why"></h3></div>
-                <p class="hint" data-i18n-html="mode.why.body"></p>
-              </div>
-            </section>
-
-            <!-- ============ 自動偵測 ============ -->
-            <section class="view" data-view="detect">
-              <div class="card">
-                <div class="card-head">
-                  <h3 data-i18n="card.monitor"></h3>
-                  <div class="switch" id="sw-monitor" role="switch" tabindex="0"
-                       data-i18n-aria="card.monitor"><span class="knob"></span></div>
-                </div>
-                <p class="hint" data-i18n-html="monitor.hint"></p>
-                <p class="alert" id="monitor-error" hidden></p>
-
-                <div class="meterbox" id="meterbox">
-                  <div class="meter-head">
-                    <span id="monitor-device" data-i18n="monitor.off"></span>
-                    <span class="mono" id="monitor-readout">—</span>
-                  </div>
-                  <div class="wave" id="wave"><canvas id="wave-canvas"></canvas></div>
-                  <div class="meter-rows">
-                    <div class="meter-row">
-                      <span data-i18n="monitor.volume"></span>
-                      <div class="bar"><i id="bar-rms"></i><u id="bar-baseline"></u></div>
-                      <span class="mono" id="val-rms">—</span>
-                    </div>
-                    <div class="meter-row">
-                      <span data-i18n="monitor.zcr"></span>
-                      <div class="bar"><i id="bar-zcr"></i><u id="bar-zcr-th"></u></div>
-                      <span class="mono" id="val-zcr">—</span>
+              <div class="disclose" data-open="false" id="dis-tech">
+                <button class="disclose-head" aria-expanded="false" aria-controls="tech-body">
+                  <span class="disclose-chevron" aria-hidden="true">›</span>
+                  <span data-i18n="tech.title"></span>
+                  <span class="disclose-note" id="tech-note"></span>
+                </button>
+                <div class="disclose-body" id="tech-body">
+                  <div class="disclose-inner">
+                    <dl class="kv" id="mode-kv"></dl>
+                    <div class="table-scroll">
+                      <table class="table" id="devtable">
+                        <thead><tr>
+                          <th data-i18n="table.status"></th>
+                          <th data-i18n="table.name"></th>
+                          <th data-i18n="table.id"></th>
+                        </tr></thead>
+                        <tbody></tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="card">
-                <div class="card-head">
-                  <h3 data-i18n="card.autorecover"></h3>
-                  <div class="switch" id="sw-auto" role="switch" tabindex="0"
-                       data-i18n-aria="card.autorecover"><span class="knob"></span></div>
-                </div>
-                <p class="hint" data-i18n-html="autorecover.hint"></p>
-                <div class="rowset">
-                  <div class="row">
-                    <div class="row-text">
-                      <strong data-i18n="row.cooldown"></strong>
-                      <span data-i18n="row.cooldown.sub"></span>
-                    </div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-cooldown" min="5" max="300" step="5" />
-                      <span class="mono slider-val" id="val-cooldown">—</span>
+              <div class="disclose" data-open="false" id="dis-log">
+                <button class="disclose-head" aria-expanded="false" aria-controls="log-body">
+                  <span class="disclose-chevron" aria-hidden="true">›</span>
+                  <span data-i18n="log.title"></span>
+                </button>
+                <div class="disclose-body" id="log-body">
+                  <div class="disclose-inner">
+                    <ul class="timeline" id="timeline"></ul>
+                    <div class="btn-row">
+                      <button class="btn btn-quiet btn-sm" id="btn-clear-history"
+                              data-i18n="btn.clear"></button>
                     </div>
                   </div>
-                  <div class="row">
-                    <div class="row-text">
-                      <strong data-i18n="row.maxreset"></strong>
-                      <span data-i18n="row.maxreset.sub"></span>
-                    </div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-maxreset" min="1" max="20" step="1" />
-                      <span class="mono slider-val" id="val-maxreset">—</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="card">
-                <div class="card-head"><h3 data-i18n="card.detectors"></h3></div>
-
-                <div class="detector" data-detector="stall">
-                  <div class="detector-head">
-                    <div class="row-text">
-                      <strong data-i18n="det.stall.title"></strong>
-                      <span data-i18n="det.stall.sub"></span>
-                    </div>
-                    <div class="switch sm" id="sw-stall" role="switch" tabindex="0"
-                         data-i18n-aria="det.stall.title"><span class="knob"></span></div>
-                  </div>
-                  <div class="row">
-                    <div class="row-text"><span data-i18n="det.time"></span></div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-stall" min="0.5" max="10" step="0.5" />
-                      <span class="mono slider-val" id="val-stall">—</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="detector" data-detector="silence">
-                  <div class="detector-head">
-                    <div class="row-text">
-                      <strong data-i18n="det.silence.title"></strong>
-                      <span data-i18n="det.silence.sub"></span>
-                    </div>
-                    <div class="switch sm" id="sw-silence" role="switch" tabindex="0"
-                         data-i18n-aria="det.silence.title"><span class="knob"></span></div>
-                  </div>
-                  <div class="row">
-                    <div class="row-text"><span data-i18n="det.duration"></span></div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-silence" min="2" max="60" step="1" />
-                      <span class="mono slider-val" id="val-silence">—</span>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="row-text"><span data-i18n="det.silence.floor"></span></div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-silencefloor" min="-220" max="-100" step="5" />
-                      <span class="mono slider-val" id="val-silencefloor">—</span>
-                    </div>
-                  </div>
-                  <p class="hint subtle" data-i18n="det.silence.note"></p>
-                </div>
-
-                <div class="detector" data-detector="noise">
-                  <div class="detector-head">
-                    <div class="row-text">
-                      <strong data-i18n="det.noise.title"></strong>
-                      <span data-i18n="det.noise.sub"></span>
-                    </div>
-                    <div class="switch sm" id="sw-noise" role="switch" tabindex="0"
-                         data-i18n-aria="det.noise.title"><span class="knob"></span></div>
-                  </div>
-                  <div class="row">
-                    <div class="row-text"><span data-i18n="det.noise.margin"></span></div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-noisemargin" min="6" max="40" step="1" />
-                      <span class="mono slider-val" id="val-noisemargin">—</span>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="row-text"><span data-i18n="det.noise.zcr"></span></div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-noisezcr" min="0.05" max="0.6" step="0.01" />
-                      <span class="mono slider-val" id="val-noisezcr">—</span>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="row-text"><span data-i18n="det.duration"></span></div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-noiseseconds" min="0.3" max="10" step="0.1" />
-                      <span class="mono slider-val" id="val-noiseseconds">—</span>
-                    </div>
-                  </div>
-                  <p class="hint subtle" data-i18n="det.noise.note"></p>
                 </div>
               </div>
             </section>
@@ -343,26 +157,10 @@
             <section class="view" data-view="settings">
               <div class="card">
                 <div class="card-head">
-                  <h3 data-i18n="card.language"></h3>
-                </div>
-                <div class="row">
-                  <div class="row-text">
-                    <strong data-i18n="lang.label"></strong>
-                    <span data-i18n="lang.sub"></span>
-                  </div>
-                  <div class="input-wrap">
-                    <select id="cfg-language"></select>
-                  </div>
-                </div>
-              </div>
-
-              <div class="card">
-                <div class="card-head">
                   <h3 data-i18n="card.hotkey"></h3>
                   <div class="switch" id="sw-hotkey" role="switch" tabindex="0"
                        data-i18n-aria="card.hotkey"><span class="knob"></span></div>
                 </div>
-                <p class="hint" data-i18n="hotkey.hint"></p>
                 <div class="row">
                   <div class="row-text">
                     <strong data-i18n="hotkey.combo"></strong>
@@ -373,49 +171,6 @@
                     <span class="input-note" id="hotkey-note"></span>
                   </div>
                 </div>
-              </div>
-
-              <div class="card">
-                <div class="card-head"><h3 data-i18n="card.monitordev"></h3></div>
-                <div class="row">
-                  <div class="row-text">
-                    <strong data-i18n="dev.input"></strong>
-                    <span data-i18n="dev.input.sub"></span>
-                  </div>
-                  <div class="input-wrap">
-                    <select id="cfg-inputdev"></select>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="row-text">
-                    <strong data-i18n="dev.samplerate"></strong>
-                    <span data-i18n="dev.samplerate.sub"></span>
-                  </div>
-                  <div class="input-wrap">
-                    <select id="cfg-samplerate">
-                      <option value="0" data-i18n="dev.samplerate.auto"></option>
-                      <option value="44100">44100 Hz</option>
-                      <option value="48000">48000 Hz</option>
-                      <option value="88200">88200 Hz</option>
-                      <option value="96000">96000 Hz</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="row-text">
-                    <strong data-i18n="dev.blocksize"></strong>
-                    <span data-i18n-html="dev.blocksize.sub"></span>
-                  </div>
-                  <div class="input-wrap">
-                    <select id="cfg-blocksize">
-                      <option value="256">256</option>
-                      <option value="512">512</option>
-                      <option value="1024">1024</option>
-                      <option value="2048">2048</option>
-                    </select>
-                  </div>
-                </div>
-                <p class="hint subtle" data-i18n-html="dev.blocksize.note"></p>
               </div>
 
               <div class="card">
@@ -447,49 +202,21 @@
                   </div>
                   <div class="row">
                     <div class="row-text">
-                      <strong data-i18n="beh.settle"></strong>
-                      <span data-i18n="beh.settle.sub"></span>
+                      <strong data-i18n="lang.label"></strong>
                     </div>
-                    <div class="slider-wrap">
-                      <input type="range" id="cfg-settle" min="0" max="15" step="0.5" />
-                      <span class="mono slider-val" id="val-settle">—</span>
+                    <div class="input-wrap">
+                      <select id="cfg-language"></select>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div class="card">
-                <div class="card-head"><h3 data-i18n="card.paths"></h3></div>
-                <dl class="kv" id="paths-kv"></dl>
-                <div class="btn-row">
-                  <button class="btn btn-quiet" id="btn-open-data" data-i18n="btn.opendata"></button>
-                  <button class="btn btn-quiet" id="btn-reset-settings"
-                          data-i18n="btn.resetsettings"></button>
-                </div>
-              </div>
-            </section>
-
-            <!-- ============ 紀錄 ============ -->
-            <section class="view" data-view="history">
-              <div class="card">
-                <div class="card-head">
-                  <h3 data-i18n="card.history"></h3>
-                  <button class="btn btn-quiet btn-sm" id="btn-clear-history"
-                          data-i18n="btn.clear"></button>
-                </div>
-                <p class="hint" data-i18n="history.hint"></p>
-                <ul class="timeline" id="timeline"></ul>
-              </div>
-            </section>
-
-            <!-- ============ 維護 ============ -->
-            <section class="view" data-view="maintenance">
-              <div class="card">
                 <div class="card-head">
                   <h3 data-i18n="card.ghosts"></h3>
                   <span class="card-note" id="ghost-count">—</span>
                 </div>
-                <p class="hint" data-i18n-html="ghosts.hint"></p>
+                <p class="hint" data-i18n="ghosts.hint"></p>
                 <ul class="ghostlist" id="ghostlist"></ul>
                 <div class="btn-row">
                   <button class="btn btn-quiet" id="btn-scan-ghosts" data-i18n="btn.scan"></button>
@@ -499,17 +226,12 @@
               </div>
 
               <div class="card">
-                <div class="card-head"><h3 data-i18n="card.alldevices"></h3></div>
-                <div class="table-scroll">
-                  <table class="table" id="devtable">
-                    <thead><tr>
-                      <th data-i18n="table.status"></th>
-                      <th data-i18n="table.name"></th>
-                      <th data-i18n="table.class"></th>
-                      <th data-i18n="table.id"></th>
-                    </tr></thead>
-                    <tbody></tbody>
-                  </table>
+                <div class="card-head"><h3 data-i18n="card.data"></h3></div>
+                <dl class="kv" id="paths-kv"></dl>
+                <div class="btn-row">
+                  <button class="btn btn-quiet" id="btn-open-data" data-i18n="btn.opendata"></button>
+                  <button class="btn btn-quiet" id="btn-reset-settings"
+                          data-i18n="btn.resetsettings"></button>
                 </div>
               </div>
             </section>

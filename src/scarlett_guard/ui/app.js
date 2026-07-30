@@ -2,9 +2,9 @@
  *
  * 動態原則：
  *  - 所有按壓回饋走 CSS :active，在 pointer-down 當下就發生，不等 click。
- *  - 視圖切換用彈簧曲線的位移＋淡入，而不是等長的線性過場。
- *  - 儀表每 100ms 由 Python 推送一次，畫布用 requestAnimationFrame 補間，
- *    讓每幀的位移小於感知門檻，不會頻閃。
+ *  - 視圖與收合區塊用彈簧曲線，不用等長的線性過場。
+ *  - 切換驅動模式要十幾秒，所以指示器在按下的當下就移到目標位置，
+ *    失敗再滑回真實位置（CSS transition 從目前呈現值開始，不會跳）。
  *
  * 文案一律經過 i18n.js 的 t()；靜態文字用 HTML 上的 data-i18n 標記。
  */
@@ -18,12 +18,8 @@
 
   // ================================================================ 診斷
   // 這一段刻意放在最前面：任何在它之後發生的錯誤都會被接住。
-  // 函式宣告會被提升，所以這裡可以安全地引用底下才定義的 api() 與 toast()。
 
   window.__SG_ERRORS = [];
-  // 啟動軌跡。UI 出問題時要能回答「到底走到哪一步」，光看畫面看不出來。
-  window.__SG_TRACE = [];
-  const trace = (msg) => window.__SG_TRACE.push(msg);
 
   function reportError(where, error) {
     const detail = error && error.stack ? error.stack : String(error);
@@ -57,12 +53,10 @@
     device: null,
     driverMode: null,
     modePending: '',
-    monitor: {},
-    stats: {},
     ghosts: [],
     history: [],
-    inputDevices: [],
     autostart: false,
+    elevated: false,
     busy: false,
     view: 'status',
   };
@@ -76,8 +70,7 @@
   /* 橋接是否「真的」可用。
    *
    * 不能只檢查 window.pywebview.api 是否存在：pywebview 會先建立一個空物件，
-   * 方法是稍後才逐一掛上去的。只看物件存在就開始呼叫，會拿到
-   * 「橋接尚未就緒：bootstrap」。所以直接檢查要用的方法本身。
+   * 方法是稍後才逐一掛上去的。所以直接檢查要用的方法本身。
    */
   function bridgeReady() {
     const bridge = api();
@@ -131,11 +124,6 @@
     el.addEventListener('click', remove);
   }
 
-  function fmtSeconds(value) {
-    const n = Number(value);
-    return `${Number.isInteger(n) ? n : n.toFixed(1)}s`;
-  }
-
   function escapeHtml(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;')
@@ -151,14 +139,12 @@
     window.I18N.apply();
     // 動態產生的內容不受 data-i18n 影響，必須自己重畫一次
     renderViewHeader();
-    if (state.device) renderDevice(state.device);
     if (state.driverMode) renderDriverMode(state.driverMode);
-    if (state.stats) renderStats(state.stats);
-    if (state.monitor) renderMonitor(state.monitor);
+    renderTech();
+    renderResetButton();
     renderHistory(state.history);
     renderGhosts();
-    renderInputDevices(state.inputDevices);
-    renderSliders();
+    renderPaths(state.paths);
     renderLanguageSelect();
   }
 
@@ -182,7 +168,7 @@
 
   // ================================================================ 視圖切換
 
-  const VIEWS = ['status', 'mode', 'detect', 'settings', 'history', 'maintenance'];
+  const VIEWS = ['status', 'settings'];
 
   function renderViewHeader() {
     $('#view-title').textContent = t(`view.${state.view}.title`);
@@ -208,12 +194,10 @@
     });
     $('#scroll').scrollTop = 0;
 
-    if (name === 'maintenance') scanGhosts();
-    if (name === 'history') refreshHistory();
-    if (name === 'mode') refreshDriverMode(true);
+    if (name === 'settings') scanGhosts();
   }
 
-  // ================================================================ 開關元件
+  // ================================================================ 開關與收合
 
   function bindSwitch(sel, getter, setter) {
     const el = $(sel);
@@ -240,6 +224,18 @@
     $$('.switch').forEach((el) => el._sync && el._sync());
   }
 
+  /** 收合區塊。進階內容往下一層，但一按就到，不用換頁。 */
+  function bindDisclosures() {
+    $$('.disclose').forEach((box) => {
+      const head = box.querySelector('.disclose-head');
+      head.addEventListener('click', () => {
+        const open = box.dataset.open !== 'true';
+        box.dataset.open = String(open);
+        head.setAttribute('aria-expanded', String(open));
+      });
+    });
+  }
+
   // ================================================================ 設定寫入
 
   const pushSettings = debounce(async (values) => {
@@ -247,14 +243,12 @@
     if (result && result.config) {
       state.config = result.config;
       syncSwitches();
-      renderSliders();
     }
   }, 260);
 
   function setConfig(key, value, immediate = false) {
     state.config[key] = value;
     syncSwitches();
-    renderSliders();
     if (immediate) {
       call('update_settings', { [key]: value }).then((result) => {
         if (result && result.config) state.config = result.config;
@@ -264,133 +258,18 @@
     }
   }
 
-  // ================================================================ 渲染：狀態
+  // ================================================================ 權限
 
-  /** 權限狀態不需要等裝置查詢，bootstrap 一回來就能上。 */
   function applyElevation(elevated) {
     state.elevated = !!elevated;
     const pill = $('#elevation-pill');
     pill.dataset.tone = elevated ? 'ok' : 'error';
     $('#elevation-text').textContent = elevated ? t('elev.admin') : t('elev.none');
     $('#elevation-banner').hidden = !!elevated;
-    if (!elevated) {
-      $('#btn-reset').disabled = true;
-      $('#reset-hint').textContent = t('reset.sub.noadmin');
-    }
+    renderResetButton();
   }
 
-  function renderDevice(data) {
-    if (!data) return;
-    state.device = data;
-
-    const primary = data.primary;
-    const ring = $('#status-ring');
-    const chips = $('#device-chips');
-    chips.innerHTML = '';
-
-    let tone = 'idle';
-    if (state.busy) tone = 'busy';
-    else if (primary && primary.is_present) tone = 'ok';
-    else if (primary) tone = 'error';
-    ring.dataset.tone = tone;
-
-    $('#device-name').textContent = primary ? primary.friendly_name : t('status.notfound');
-    $('#device-id').textContent = primary ? primary.instance_id : t('status.notfound.sub');
-
-    const addChip = (text, chipTone) => {
-      const chip = document.createElement('span');
-      chip.className = 'chip';
-      if (chipTone) chip.dataset.tone = chipTone;
-      chip.textContent = text;
-      chips.appendChild(chip);
-    };
-
-    if (primary) {
-      addChip(
-        primary.is_present ? t('chip.online') : t('chip.offline', { status: primary.status }),
-        primary.is_present ? 'ok' : 'error'
-      );
-    }
-    addChip(
-      data.uses_focusrite_driver ? t('chip.driver.focusrite') : t('chip.driver.uac2'),
-      data.uses_focusrite_driver ? 'warn' : 'ok'
-    );
-    addChip(data.elevated ? t('chip.elevated') : t('chip.notelevated'),
-            data.elevated ? 'ok' : 'error');
-    if (data.ghost_count > 0) addChip(t('chip.ghosts', { n: data.ghost_count }), 'warn');
-
-    const pill = $('#elevation-pill');
-    pill.dataset.tone = data.elevated ? 'ok' : 'error';
-    $('#elevation-text').textContent = data.elevated ? t('elev.admin') : t('elev.none');
-    $('#elevation-banner').hidden = !!data.elevated;
-    $('#suspend-banner').hidden = !data.auto_recover_suspended;
-
-    const resetBtn = $('#btn-reset');
-    resetBtn.disabled = !data.elevated || !primary || state.busy;
-    $('#reset-hint').textContent = !data.elevated
-      ? t('reset.sub.noadmin')
-      : primary
-        ? t('reset.sub')
-        : t('reset.sub.nodevice');
-
-    renderDriver(data);
-    renderDeviceTable(data.devices || []);
-  }
-
-  function renderDriver(data) {
-    const driver = data.driver || {};
-    const rows = [
-      [t('driver.version'), driver.driver_version || '—'],
-      [t('driver.provider'), driver.driver_provider || '—'],
-      [t('driver.date'), driver.driver_date || '—'],
-      [t('driver.manufacturer'), driver.manufacturer || '—'],
-      [t('driver.class'), data.primary ? data.primary.device_class || '—' : '—'],
-    ];
-    $('#driver-kv').innerHTML = rows
-      .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`)
-      .join('');
-
-    $('#driver-mode').textContent = data.uses_focusrite_driver
-      ? t('chip.driver.focusrite')
-      : t('chip.driver.uac2');
-    $('#driver-hint').textContent = data.uses_focusrite_driver
-      ? t('driver.hint.focusrite')
-      : t('driver.hint.uac2');
-  }
-
-  function renderDeviceTable(devices) {
-    const tbody = $('#devtable tbody');
-    if (!devices.length) {
-      tbody.innerHTML = `<tr><td colspan="4" class="empty">${escapeHtml(t('devices.empty'))}</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = devices
-      .map((dev) => {
-        const tone = dev.is_present ? 'ok' : dev.is_ghost ? 'warn' : 'idle';
-        return `<tr>
-          <td><span class="chip" data-tone="${tone}">${escapeHtml(dev.status)}</span></td>
-          <td>${escapeHtml(dev.friendly_name)}</td>
-          <td>${escapeHtml(dev.device_class || '—')}</td>
-          <td>${escapeHtml(dev.instance_id)}</td>
-        </tr>`;
-      })
-      .join('');
-  }
-
-  function renderStats(stats) {
-    if (!stats) return;
-    state.stats = stats;
-    $('#stat-last').textContent = stats.last_reset_ago || '—';
-    $('#stat-last-iso').textContent = stats.last_reset_iso || t('stat.none');
-    const unit = t('stat.times');
-    $('#stat-24h').innerHTML =
-      `${stats.resets_24h || 0}${unit ? `<small> ${escapeHtml(unit)}</small>` : ''}`;
-    $('#stat-7d').textContent = t('stat.7d', { n: stats.resets_7d || 0 });
-    $('#stat-gap').textContent =
-      stats.mean_gap_hours != null ? t('unit.hours', { n: stats.mean_gap_hours }) : '—';
-  }
-
-  // ================================================================ 渲染：驅動模式
+  // ================================================================ 驅動模式（主功能）
 
   const modeLabel = (mode) => t(mode === 'asio' ? 'mode.asio.name' : 'mode.daily.name');
 
@@ -399,10 +278,9 @@
     state.driverMode = data;
 
     const sw = $('#modeswitch');
-    /* 切換要花十幾秒。指示器在切換期間停在「目標」位置而不是原位 ——
+    /* 切換要十幾秒。指示器在切換期間停在「目標」位置而不是原位 ——
      * 按下的當下就要有東西動，不然整個操作讀起來像沒接上。
-     * 同時掛上 is-pending 明確表示「還沒確認」，失敗時再滑回真實位置，
-     * 而 CSS transition 是從目前的呈現值開始，所以滑回去不會跳。 */
+     * 同時掛上 is-pending 明確表示「還沒確認」，失敗時再滑回真實位置。 */
     const shown = state.modePending || data.mode;
     sw.dataset.selected = shown === 'asio' ? 'asio' : 'daily';
     sw.classList.toggle('is-pending', !!state.modePending);
@@ -414,7 +292,7 @@
     });
 
     renderModeStatus(data);
-    renderModeEvidence(data);
+    renderTech();
   }
 
   function renderModeStatus(data) {
@@ -449,44 +327,17 @@
     el.dataset.tone = tone;
     el.textContent = text;
 
-    // 裝置沒有驅動、或音訊路徑沒起來時，救援按鈕是唯一的出路
+    // 裝置沒有可用驅動、或音訊路徑沒起來時，救援按鈕是唯一的出路
     const broken =
       !!data.elevated &&
       data.available &&
       (!data.healthy || data.mode === 'unknown' || data.complete === false);
     $('#mode-broken-banner').hidden = !broken;
     if (broken) {
-      $('#mode-broken-detail').textContent = t('mode.broken.body.detail', {
+      $('#mode-broken-detail').textContent = t('mode.broken.body', {
         service: data.root_service || '—',
-        problem: data.root_problem || '—',
       });
     }
-  }
-
-  function renderModeEvidence(data) {
-    $('#mode-verdict').textContent =
-      data.mode === 'unknown' ? t('mode.verdict.unknown') : modeLabel(data.mode);
-
-    const endpoints = (data.endpoints || []).join('、');
-    const rows = [
-      // 「音訊路徑」放第一行：它才是「這個模式現在能不能用」的答案，
-      // 母節點綁在誰身上只是過程。
-      [
-        t('mode.kv.complete'),
-        data.complete ? t('mode.complete.yes') : t('mode.complete.no'),
-      ],
-      [t('mode.kv.parent'), data.root_service || '—'],
-      [t('mode.kv.audio'), data.audio_service || '—'],
-      [t('mode.kv.adapter'), data.adapter_id || '—'],
-      [t('mode.kv.inf'), data.root_inf || '—'],
-      [t('mode.kv.status'), `${data.root_status || '—'} / ${data.root_problem || '—'}`],
-      [t('mode.kv.endpoints'), endpoints || '—'],
-      [t('mode.kv.hwid'), data.hardware_id || '—'],
-      [t('mode.kv.focusriteinf'), data.focusrite_inf || t('mode.kv.focusriteinf.none')],
-    ];
-    $('#mode-kv').innerHTML = rows
-      .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd class="mono">${escapeHtml(v)}</dd>`)
-      .join('');
   }
 
   async function refreshDriverMode(force = false) {
@@ -498,7 +349,7 @@
     const data = state.driverMode;
     if (!data || state.busy || state.modePending) return;
     if (!data.elevated || !data.available) return;
-    if (data.mode === mode && data.healthy) return;
+    if (data.mode === mode && data.complete) return;
 
     state.modePending = mode;
     renderDriverMode(data);
@@ -520,9 +371,7 @@
         16000
       );
     }
-    await refreshDriverMode(true);
-    await refreshDevice(true);
-    refreshHistory();
+    await afterAction();
   }
 
   async function doRepairMode() {
@@ -541,181 +390,110 @@
       result && result.ok ? 'ok' : 'error',
       result && result.ok ? 6000 : 16000
     );
-    await refreshDriverMode(true);
-    await refreshDevice(true);
-    refreshHistory();
+    await afterAction();
   }
 
-  // ================================================================ 渲染：監聽儀表
+  // ================================================================ 重置（次要動作）
 
-  const wave = { values: [], target: [] };
+  function renderResetButton() {
+    const btn = $('#btn-reset');
+    if (!btn) return;
+    const primary = state.device && state.device.primary;
+    btn.disabled = !state.elevated || !primary || state.busy || !!state.modePending;
+    $('#reset-hint').textContent = !state.elevated
+      ? t('reset.sub.noadmin')
+      : primary
+        ? t('reset.sub')
+        : t('reset.sub.nodevice');
+  }
 
-  function renderMonitor(data) {
-    if (!data) return;
-    state.monitor = data;
+  async function doReset(source = 'manual') {
+    if (state.busy || state.modePending) return;
+    const btn = $('#btn-reset');
+    btn.classList.add('is-busy');
+    btn.disabled = true;
 
-    const sw = $('#sw-monitor');
-    sw.classList.toggle('is-on', !!data.running);
-    sw.setAttribute('aria-checked', String(!!data.running));
+    const result = await call('reset', source);
 
-    $('#monitor-device').textContent = data.running
-      ? data.device_name || t('monitor.on')
-      : t('monitor.off');
-
-    const err = $('#monitor-error');
-    if (data.error) {
-      err.hidden = false;
-      err.textContent = data.error;
+    btn.classList.remove('is-busy');
+    if (result && result.ok) {
+      toast(t('toast.reset.ok'), t('toast.reset.ok.sub'), 'ok');
     } else {
-      err.hidden = true;
+      toast(
+        t('toast.reset.fail'),
+        [(result && result.message) || '', (result && result.detail) || '']
+          .filter(Boolean)
+          .join('\n'),
+        'error',
+        7000
+      );
     }
+    await afterAction();
+  }
 
-    if (!data.running) {
-      $('#monitor-readout').textContent = '—';
-      $('#val-rms').textContent = '—';
-      $('#val-zcr').textContent = '—';
-      $('#bar-rms').style.width = '0%';
-      $('#bar-zcr').style.width = '0%';
-      wave.target = [];
+  // ================================================================ 技術細節
+
+  function renderDevice(data) {
+    if (!data) return;
+    state.device = data;
+    if (typeof data.elevated === 'boolean') applyElevation(data.elevated);
+    renderResetButton();
+    renderTech();
+  }
+
+  /** 判斷依據 + 驅動資訊 + 所有節點，全部收在同一個收合區塊裡。 */
+  function renderTech() {
+    const mode = state.driverMode || {};
+    const dev = state.device || {};
+    const driver = dev.driver || {};
+    const primary = dev.primary;
+
+    // 摘要行讓人不必展開就知道裝置是什麼、在不在線
+    $('#tech-note').textContent = primary
+      ? `${primary.friendly_name} · ${primary.is_present ? t('chip.online') : primary.status}`
+      : t('status.notfound');
+
+    const rows = [
+      // 「音訊路徑」放第一行：它才是「這個模式現在能不能用」的答案，
+      // 母節點綁在誰身上只是過程。
+      [
+        t('mode.kv.complete'),
+        mode.complete ? t('mode.complete.yes') : t('mode.complete.no'),
+      ],
+      [t('mode.kv.parent'), mode.root_service || '—'],
+      [t('mode.kv.audio'), mode.audio_service || '—'],
+      [t('mode.kv.adapter'), mode.adapter_id || '—'],
+      [t('mode.kv.inf'), mode.root_inf || '—'],
+      [t('mode.kv.status'), `${mode.root_status || '—'} / ${mode.root_problem || '—'}`],
+      [t('mode.kv.endpoints'), (mode.endpoints || []).join('、') || '—'],
+      [t('mode.kv.hwid'), mode.hardware_id || '—'],
+      [t('mode.kv.focusriteinf'), mode.focusrite_inf || t('mode.kv.focusriteinf.none')],
+      [t('driver.version'), driver.driver_version || '—'],
+      [t('driver.date'), driver.driver_date || '—'],
+    ];
+    $('#mode-kv').innerHTML = rows
+      .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd class="mono">${escapeHtml(v)}</dd>`)
+      .join('');
+
+    renderDeviceTable(dev.devices || []);
+  }
+
+  function renderDeviceTable(devices) {
+    const tbody = $('#devtable tbody');
+    if (!devices.length) {
+      tbody.innerHTML = `<tr><td colspan="3" class="empty">${escapeHtml(t('devices.empty'))}</td></tr>`;
       return;
     }
-
-    const rms = Number(data.rms_db);
-    const zcr = Number(data.zcr);
-    const baseline = data.baseline_db;
-
-    $('#monitor-readout').textContent =
-      baseline != null
-        ? t('monitor.readout.base', { gap: data.callback_gap, base: baseline })
-        : t('monitor.readout', { gap: data.callback_gap });
-    $('#val-rms').textContent = `${rms.toFixed(1)} dB`;
-    $('#val-zcr').textContent = zcr.toFixed(3);
-
-    $('#bar-rms').style.width = `${dbToPercent(rms)}%`;
-    $('#bar-baseline').style.left = baseline != null ? `${dbToPercent(baseline)}%` : '0%';
-    $('#bar-zcr').style.width = `${Math.min(100, (zcr / 0.6) * 100)}%`;
-    $('#bar-zcr-th').style.left =
-      `${Math.min(100, (Number(state.config.noise_zcr || 0.3) / 0.6) * 100)}%`;
-
-    wave.target = (data.waveform || []).slice(-140);
-    $('#suspend-banner').hidden = !data.auto_recover_suspended;
-  }
-
-  function dbToPercent(db) {
-    // -100dB → 0%，0dB → 100%
-    return Math.max(0, Math.min(100, ((Number(db) + 100) / 100) * 100));
-  }
-
-  function drawWave() {
-    const canvas = $('#wave-canvas');
-    if (canvas && canvas.isConnected) {
-      const dpr = window.devicePixelRatio || 1;
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (w > 0 && h > 0) {
-        if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-          canvas.width = w * dpr;
-          canvas.height = h * dpr;
-        }
-        const ctx = canvas.getContext('2d');
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, w, h);
-
-        // 平滑補間，讓每幀位移小於感知門檻
-        const target = wave.target;
-        if (wave.values.length !== target.length) wave.values = target.slice();
-        for (let i = 0; i < target.length; i += 1) {
-          const from = wave.values[i] ?? target[i];
-          wave.values[i] = from + (target[i] - from) * (reduceMotion ? 1 : 0.35);
-        }
-
-        const points = wave.values;
-        if (points.length > 1) {
-          const step = w / (points.length - 1);
-          const accent =
-            getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() ||
-            '#0a84ff';
-
-          ctx.beginPath();
-          points.forEach((db, i) => {
-            const y = h - (dbToPercent(db) / 100) * h;
-            if (i === 0) ctx.moveTo(0, y);
-            else ctx.lineTo(i * step, y);
-          });
-
-          const grad = ctx.createLinearGradient(0, 0, 0, h);
-          grad.addColorStop(0, accent);
-          grad.addColorStop(1, 'rgba(10,132,255,0.15)');
-          ctx.strokeStyle = grad;
-          ctx.lineWidth = 1.8;
-          ctx.lineJoin = 'round';
-          ctx.lineCap = 'round';
-          ctx.stroke();
-
-          ctx.lineTo(w, h);
-          ctx.lineTo(0, h);
-          ctx.closePath();
-          ctx.fillStyle = 'rgba(10,132,255,0.10)';
-          ctx.fill();
-        }
-      }
-    }
-    requestAnimationFrame(drawWave);
-  }
-
-  // ================================================================ 滑桿
-
-  const SLIDERS = [
-    ['#cfg-cooldown', '#val-cooldown', 'cooldown_seconds', (v) => fmtSeconds(v)],
-    ['#cfg-maxreset', '#val-maxreset', 'max_resets_per_hour', (v) => t('unit.perhour', { n: v })],
-    ['#cfg-stall', '#val-stall', 'stall_seconds', (v) => fmtSeconds(v)],
-    ['#cfg-silence', '#val-silence', 'silence_seconds', (v) => fmtSeconds(v)],
-    ['#cfg-silencefloor', '#val-silencefloor', 'silence_floor_db', (v) => `${v} dB`],
-    ['#cfg-noisemargin', '#val-noisemargin', 'noise_margin_db', (v) => `+${v} dB`],
-    ['#cfg-noisezcr', '#val-noisezcr', 'noise_zcr', (v) => Number(v).toFixed(2)],
-    ['#cfg-noiseseconds', '#val-noiseseconds', 'noise_seconds', (v) => fmtSeconds(v)],
-    ['#cfg-settle', '#val-settle', 'post_reset_settle_seconds', (v) => fmtSeconds(v)],
-  ];
-
-  function renderSliders() {
-    SLIDERS.forEach(([inputSel, valueSel, key, format]) => {
-      const input = $(inputSel);
-      const label = $(valueSel);
-      if (!input) return;
-      const value = state.config[key];
-      if (value != null && document.activeElement !== input) input.value = value;
-      if (label) label.textContent = format(input.value);
-    });
-  }
-
-  function bindSliders() {
-    SLIDERS.forEach(([inputSel, valueSel, key, format]) => {
-      const input = $(inputSel);
-      const label = $(valueSel);
-      if (!input) return;
-      input.addEventListener('input', () => {
-        if (label) label.textContent = format(input.value);
-        setConfig(key, Number(input.value));
-      });
-    });
-  }
-
-  function renderInputDevices(devices) {
-    const select = $('#cfg-inputdev');
-    state.inputDevices = devices || [];
-    const current = state.config.monitor_input_device || '';
-    select.innerHTML = '';
-    const auto = document.createElement('option');
-    auto.value = '';
-    auto.textContent = t('dev.input.auto');
-    select.appendChild(auto);
-    state.inputDevices.forEach((dev) => {
-      const option = document.createElement('option');
-      option.value = dev.name;
-      option.textContent = `${dev.name}${dev.hostapi ? ` — ${dev.hostapi}` : ''}`;
-      select.appendChild(option);
-    });
-    select.value = current;
+    tbody.innerHTML = devices
+      .map((dev) => {
+        const tone = dev.is_present ? 'ok' : dev.is_ghost ? 'warn' : 'idle';
+        return `<tr>
+          <td><span class="chip" data-tone="${tone}">${escapeHtml(dev.status)}</span></td>
+          <td>${escapeHtml(dev.friendly_name)}</td>
+          <td class="mono">${escapeHtml(dev.instance_id)}</td>
+        </tr>`;
+      })
+      .join('');
   }
 
   function renderPaths(paths) {
@@ -729,10 +507,10 @@
       .join('');
   }
 
-  // ================================================================ 紀錄
+  // ================================================================ 事件紀錄
 
   async function refreshHistory() {
-    const result = await call('history', 80);
+    const result = await call('history', 30);
     state.history = (result && result.history) || [];
     renderHistory(state.history);
   }
@@ -740,7 +518,7 @@
   function renderHistory(records) {
     const list = $('#timeline');
     if (!records || !records.length) {
-      list.innerHTML = `<li class="empty">${escapeHtml(t('history.empty'))}</li>`;
+      list.innerHTML = `<li class="empty">${escapeHtml(t('log.empty'))}</li>`;
       return;
     }
     list.innerHTML = records.map(historyItem).join('');
@@ -753,20 +531,16 @@
     let tone = 'idle';
     if (event.startsWith('reset_') || event.startsWith('mode_')) {
       tone = record.ok ? 'ok' : 'error';
-    } else if (event === 'anomaly' || event === 'auto_skipped') tone = 'warn';
-    else if (event === 'auto_suspended') tone = 'error';
-    else if (event === 'ghost_cleanup') tone = 'ok';
+    } else if (event === 'ghost_cleanup') tone = 'ok';
+    else if (event === 'js_error') tone = 'error';
 
     const bits = [];
     if (record.message) bits.push(record.message);
-    if (record.label) bits.push(record.label);
-    if (record.detail) bits.push(record.detail);
+    if (record.resulting) bits.push(modeLabel(record.resulting));
     if (record.duration_ms) bits.push(t('hist.duration', { ms: record.duration_ms }));
-    if (record.method) bits.push(t('hist.method', { method: record.method }));
     if (record.removed != null) {
       bits.push(t('hist.removed', { removed: record.removed, requested: record.requested }));
     }
-    if (record.resulting) bits.push(modeLabel(record.resulting));
 
     const time = (record.iso || '').replace('T', ' ').slice(0, 19);
     return `<li class="tl-item">
@@ -856,39 +630,21 @@
     });
   }
 
-  // ================================================================ 動作
+  // ================================================================ 共用收尾
 
-  async function doReset(source = 'manual') {
-    if (state.busy) return;
-    const btn = $('#btn-reset');
-    btn.classList.add('is-busy');
-    btn.disabled = true;
-    $('#status-ring').dataset.tone = 'busy';
-
-    const result = await call('reset', source);
-
-    btn.classList.remove('is-busy');
-    if (result && result.ok) {
-      toast(t('toast.reset.ok'), t('toast.reset.ok.sub'), 'ok');
-    } else {
-      const detail = [(result && result.message) || '', (result && result.detail) || '']
-        .filter(Boolean)
-        .join('\n');
-      toast(t('toast.reset.fail'), detail, 'error', 7000);
-    }
-    await refreshDevice(true);
-    await refreshStats();
+  /** 任何會改變裝置狀態的動作結束後都跑這一段。
+   *
+   * 刻意**不**在這裡查裝置狀態：後端在動作收尾時已經開了背景執行緒去強制查一次，
+   * 查完會自己從 device / driver_mode 兩個頻道推過來。前端再查一次只會和它撞在
+   * 一起，同時開兩支 PowerShell 互搶 CPU。萬一那次推送掉了，輪詢也會補上。
+   */
+  async function afterAction() {
     refreshHistory();
   }
 
   async function refreshDevice(force = false) {
     const result = await call('device_status', force);
     if (result && result.device) renderDevice(result.device);
-  }
-
-  async function refreshStats() {
-    const result = await call('stats');
-    if (result && result.stats) renderStats(result.stats);
   }
 
   // ================================================================ Python → JS 事件
@@ -899,30 +655,15 @@
         case 'device':
           renderDevice(payload);
           break;
-        case 'monitor':
-          renderMonitor(payload);
-          break;
-        case 'stats':
-          renderStats(payload);
-          break;
         case 'driver_mode':
           renderDriverMode(payload);
           break;
         case 'busy':
           state.busy = !!payload.busy;
           $('#btn-reset').classList.toggle('is-busy', state.busy);
-          if (state.busy) $('#status-ring').dataset.tone = 'busy';
-          // 切換與重置共用同一把鎖，所以 busy 一變就要同步模式頁的可按狀態
+          // 重置與切換共用同一把鎖，所以 busy 一變就要同步兩邊的可按狀態
           if (state.driverMode) renderDriverMode(state.driverMode);
-          break;
-        case 'anomaly':
-          toast(t('toast.anomaly', { label: payload.label || '' }), payload.detail || '', 'warn', 8000);
-          refreshHistory();
-          break;
-        case 'auto_suspended':
-          $('#suspend-banner').hidden = false;
-          $('#suspend-detail').textContent = payload.detail || t('banner.suspend.body');
-          toast(t('toast.suspend'), payload.detail || '', 'error', 9000);
+          renderResetButton();
           break;
         case 'history':
           refreshHistory();
@@ -930,7 +671,6 @@
         case 'settings':
           state.config = payload;
           syncSwitches();
-          renderSliders();
           break;
         default:
           break;
@@ -946,13 +686,13 @@
       if (btn) switchView(btn.dataset.view);
     });
 
-    $('#btn-reset').addEventListener('click', () => doReset('manual'));
     $('#btn-refresh').addEventListener('click', async () => {
+      await refreshDriverMode(true);
       await refreshDevice(true);
-      await refreshStats();
-      if (state.view === 'mode') await refreshDriverMode(true);
       toast(t('toast.refreshed'), '', 'ok', 1800);
     });
+    $('#btn-minimise').addEventListener('click', () => call('hide_window'));
+    $('#btn-elevate').addEventListener('click', () => call('relaunch_elevated'));
 
     // --- 驅動模式 ---
     $('#modeswitch').addEventListener('click', (event) => {
@@ -971,15 +711,11 @@
       }
     });
     $('#btn-repair-mode').addEventListener('click', doRepairMode);
-    $('#btn-minimise').addEventListener('click', () => call('hide_window'));
-    $('#btn-elevate').addEventListener('click', () => call('relaunch_elevated'));
-    $('#btn-resume-auto').addEventListener('click', async () => {
-      await call('resume_auto_recover');
-      $('#suspend-banner').hidden = true;
-      toast(t('toast.autoresume'), '', 'ok');
-    });
+    $('#btn-reset').addEventListener('click', () => doReset('manual'));
 
-    // --- 語言 ---
+    bindDisclosures();
+
+    // --- 設定 ---
     $('#cfg-language').addEventListener('change', (event) => {
       const code = event.target.value;
       state.config.language = code;
@@ -987,18 +723,6 @@
       call('update_settings', { language: code });
     });
 
-    // --- 開關 ---
-    bindSwitch('#sw-monitor', () => state.monitor.running, async (on) => {
-      const result = await call('set_monitor_enabled', on);
-      if (result && result.state) renderMonitor(result.state);
-      if (result && !result.ok) toast(t('toast.monitor.fail'), result.message || '', 'error', 8000);
-      else toast(on ? t('toast.monitor.on') : t('toast.monitor.off'), '', 'ok', 2200);
-      state.config.monitor_enabled = on;
-    });
-    bindSwitch('#sw-auto', () => state.config.auto_recover, (on) => setConfig('auto_recover', on, true));
-    bindSwitch('#sw-stall', () => state.config.detect_stall, (on) => setConfig('detect_stall', on));
-    bindSwitch('#sw-silence', () => state.config.detect_silence, (on) => setConfig('detect_silence', on));
-    bindSwitch('#sw-noise', () => state.config.detect_noise, (on) => setConfig('detect_noise', on));
     bindSwitch('#sw-hotkey', () => state.config.hotkey_enabled, (on) => setConfig('hotkey_enabled', on, true));
     bindSwitch('#sw-closetray', () => state.config.close_to_tray, (on) => setConfig('close_to_tray', on));
     bindSwitch('#sw-notify', () => state.config.notify_on_reset, (on) => setConfig('notify_on_reset', on));
@@ -1014,9 +738,6 @@
       );
     });
 
-    bindSliders();
-
-    // --- 熱鍵輸入 ---
     const hotkeyInput = $('#cfg-hotkey');
     const validateHotkey = debounce(async () => {
       const combo = hotkeyInput.value.trim();
@@ -1031,14 +752,6 @@
       if (result.ok) setConfig('hotkey', combo, true);
     }, 500);
     hotkeyInput.addEventListener('input', validateHotkey);
-
-    // --- 下拉選單 ---
-    $('#cfg-inputdev').addEventListener('change', (event) =>
-      setConfig('monitor_input_device', event.target.value, true));
-    $('#cfg-samplerate').addEventListener('change', (event) =>
-      setConfig('monitor_samplerate', Number(event.target.value), true));
-    $('#cfg-blocksize').addEventListener('change', (event) =>
-      setConfig('monitor_blocksize', Number(event.target.value), true));
 
     // --- 資料 ---
     $('#btn-open-data').addEventListener('click', () => call('open_data_folder'));
@@ -1058,7 +771,6 @@
       if (!ok) return;
       await call('clear_history');
       refreshHistory();
-      refreshStats();
       toast(t('toast.history.cleared'), '', 'ok');
     });
 
@@ -1085,14 +797,6 @@
       await scanGhosts();
       await refreshDevice(true);
     });
-
-    // 快捷鍵：Ctrl+R 在視窗內直接重置
-    document.addEventListener('keydown', (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r') {
-        event.preventDefault();
-        doReset('manual');
-      }
-    });
   }
 
   // ================================================================ 啟動
@@ -1106,38 +810,25 @@
   }
 
   async function bootInner() {
-    trace('boot: calling bootstrap');
     const data = await call('bootstrap');
-    trace(`boot: bootstrap returned ok=${data && data.ok}`);
     if (!data || !data.ok) {
       // 記錄下來，否則這種啟動期失敗只會閃一則 toast 就消失，事後查不到
       reportError('bootstrap', (data && data.message) || 'no response');
-    }
-    if (!data || !data.ok) {
       toast(t('toast.bootfail'), (data && data.message) || '', 'error', 9000);
       return;
     }
 
     state.config = data.config || {};
     state.autostart = !!data.autostart;
-    state.inputDevices = data.input_devices || [];
     state.history = data.history || [];
 
     applyLanguage(state.config.language || 'auto');
     applyElevation(data.elevated);
 
-    renderStats(data.stats);
-    renderMonitor(data.monitor);
     renderHistory(state.history);
-    renderInputDevices(state.inputDevices);
     renderPaths(data.paths);
-
     $('#cfg-hotkey').value = state.config.hotkey || '';
-    $('#cfg-samplerate').value = String(state.config.monitor_samplerate || 0);
-    $('#cfg-blocksize').value = String(state.config.monitor_blocksize || 1024);
-
     syncSwitches();
-    renderSliders();
 
     if (!data.elevated) {
       toast(t('toast.notelevated'), t('toast.notelevated.body'), 'warn', 9000);
@@ -1145,36 +836,27 @@
     if (data.hotkey_error) {
       toast(t('toast.hotkeyfail'), data.hotkey_error, 'error', 8000);
     }
-    trace('boot: fast data rendered');
 
-    // 裝置狀態要跑 PowerShell（約 2–3 秒），刻意不 await ——
-    // 其餘頁面的資料已經在畫面上了，沒有理由陪它一起等。
-    $('#status-ring').classList.add('is-loading');
-    refreshDevice(true)
-      .finally(() => {
-        $('#status-ring').classList.remove('is-loading');
-        trace('boot: device rendered');
-      })
-      // 驅動模式也要跑 PowerShell。刻意接在裝置查詢之後而不是併發 ——
-      // 兩支 PowerShell 同時啟動只會互搶 CPU，讓兩邊都更慢。
-      .then(() => refreshDriverMode(true))
-      .finally(() => trace('boot: driver mode rendered'));
+    // 驅動模式與裝置狀態都要跑 PowerShell（各約兩秒），刻意不 await ——
+    // 其餘畫面已經上好了，沒有理由陪它一起等。也刻意串接而非併發：
+    // 兩支 PowerShell 同時啟動只會互搶 CPU，讓兩邊都更慢。
+    $('#modeswitch').classList.add('is-loading');
+    refreshDriverMode(true)
+      .finally(() => $('#modeswitch').classList.remove('is-loading'))
+      .then(() => refreshDevice(true));
   }
 
-  // 前端例外若沒有出口，畫面只會安靜地半殘 —— 一律回報到後端紀錄並提示使用者
   // 先用系統語言把靜態文字上好，避免 bootstrap 回來前閃過預設語言
   window.I18N.setLanguage('auto');
   window.I18N.apply();
   bindEverything();
   renderViewHeader();
-  requestAnimationFrame(drawWave);
 
   /* 等待 pywebview 橋接就緒。
    *
-   * 只監聽 pywebviewready 是不夠的：如果事件在本腳本執行前就已經觸發
-   * （例如多載入一支 script 讓執行時機晚了幾毫秒），監聽器就永遠等不到，
-   * boot() 不會執行，畫面會停在靜態文字、所有資料都是空的 —— 而且完全
-   * 沒有錯誤訊息。所以事件與輪詢兩條路並行，先到者贏。
+   * 只監聽 pywebviewready 是不夠的：如果事件在本腳本執行前就已經觸發，
+   * 監聽器就永遠等不到，boot() 不會執行，畫面會停在靜態文字、所有資料都是空的
+   * —— 而且完全沒有錯誤訊息。所以事件與輪詢兩條路並行，先到者贏。
    */
   function whenBridgeReady(callback) {
     let fired = false;
@@ -1204,9 +886,5 @@
     if (bridgeReady()) run();
   }
 
-  trace('script end');
-  whenBridgeReady(() => {
-    trace('bridge ready');
-    boot();
-  });
+  whenBridgeReady(boot);
 })();

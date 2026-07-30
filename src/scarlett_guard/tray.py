@@ -51,17 +51,13 @@ class Tray:
         self,
         on_reset: Callable[[], None],
         on_show: Callable[[], None],
-        on_toggle_monitor: Callable[[bool], None],
         on_quit: Callable[[], None],
-        monitor_enabled: Callable[[], bool],
         on_switch_mode: Callable[[str], None] | None = None,
         current_mode: Callable[[], str] | None = None,
     ) -> None:
         self._on_reset = on_reset
         self._on_show = on_show
-        self._on_toggle_monitor = on_toggle_monitor
         self._on_quit = on_quit
-        self._monitor_enabled = monitor_enabled
         self._on_switch_mode = on_switch_mode
         self._current_mode = current_mode
         self._icon = None
@@ -76,21 +72,15 @@ class Tray:
         if pystray is None:
             return
         menu = pystray.Menu(
+            # 驅動模式是主要功能，放第一項。做成子選單而不是攤平：
+            # 切換要十幾秒且會中斷音訊，多一層可以避免誤點。
+            pystray.MenuItem(t("tray.mode"), self._mode_menu()),
             # 重置刻意「不」設為 default：預設動作會綁到左鍵雙擊，
-            # 而重置會中斷音訊約三秒，誤觸的代價太高。
+            # 而重置會中斷音訊數秒，誤觸的代價太高。
             # 雙擊留給開啟視窗這個無害的動作，快速重置則交給全域熱鍵。
             pystray.MenuItem(t("tray.reset"), self._reset),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem(t("tray.open"), self._show, default=True),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                t("tray.monitor"),
-                self._toggle_monitor,
-                checked=lambda _: self._monitor_enabled(),
-            ),
-            # 驅動模式做成子選單而不是攤平在第一層：切換要十幾秒且會中斷音訊，
-            # 多一層可以避免和「立即重置」擠在一起被誤點。
-            pystray.MenuItem(t("tray.mode"), self._mode_menu()),
-            pystray.Menu.SEPARATOR,
             pystray.MenuItem(t("tray.quit"), self._quit),
         )
         self._icon = pystray.Icon(
@@ -131,9 +121,6 @@ class Tray:
 
     def _show(self, *_args) -> None:
         self._on_show()
-
-    def _toggle_monitor(self, *_args) -> None:
-        self._on_toggle_monitor(not self._monitor_enabled())
 
     def _mode_menu(self):
         """驅動模式子選單。勾號反映目前實際綁定的驅動。"""
