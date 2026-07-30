@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/icon.ico" alt="icon"><br>
   <h1>Scarlett Guard</h1>
-  <p>一鍵切換 Focusrite Scarlett 的日常 / 錄音模式，不用再為了驅動重插 USB。</p>
+  <p>一鍵切換 Focusrite Scarlett 日常 / 錄音模式，讓日常使用不再受驅動異常影響。</p>
   <p>
     <a href="https://github.com/asd880921/scarlett-guard/releases/latest/download/scarlett-guard.zip">
       <img src="https://shieldcn.dev/github/downloads-asset/asd880921/scarlett-guard/scarlett-guard.zip.svg?style=for-the-badge&label=downloads&labelColor=24292f&color=2ea44f" alt="Downloads" />

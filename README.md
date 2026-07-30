@@ -1,7 +1,7 @@
 <div align="center">
   <img src="assets/icon.ico" alt="icon"><br>
   <h1>Scarlett Guard</h1>
-  <p>One-click switching between Everyday and Studio mode on a Focusrite Scarlett. No more unplugging the USB cable to get your audio back.</p>
+  <p>One-click switching between Everyday and Studio mode on a Focusrite Scarlett. Driver failures stop getting in the way of everyday use.</p>
   <p>
     <a href="https://github.com/asd880921/scarlett-guard/releases/latest/download/scarlett-guard.zip">
       <img src="https://shieldcn.dev/github/downloads-asset/asd880921/scarlett-guard/scarlett-guard.zip.svg?style=for-the-badge&label=downloads&labelColor=24292f&color=2ea44f" alt="Downloads" />
