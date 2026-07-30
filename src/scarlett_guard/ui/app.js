@@ -860,6 +860,8 @@
     state.config = data.config || {};
     state.autostart = !!data.autostart;
     state.history = data.history || [];
+    // 版本號的單一來源是 VERSION 檔，寫死在 HTML 裡遲早會和 tag 對不上
+    if (data.version) $('#brand-version').textContent = `v${data.version}`;
 
     applyLanguage(state.config.language || 'auto');
     applyElevation(data.elevated);

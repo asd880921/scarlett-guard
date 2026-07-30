@@ -1,9 +1,19 @@
-# Scarlett Guard
-
-**Scarlett 的驅動只能二選一：原廠的有 ASIO 但會壞，Windows 內建的不會壞但沒 ASIO。這個工具讓你不用選。**
-
-Windows 10 / 11 ・ Python 3.11+ ・ MIT
-[English](README.md) · **繁體中文**
+<div align="center">
+  <img src="assets/icon.ico" alt="icon"><br>
+  <h1>Scarlett Guard</h1>
+  <p>一鍵切換 Focusrite Scarlett 驅動，日常不再電流音斷音，錄音照樣有 ASIO。</p>
+  <p>
+    <a href="https://github.com/asd880921/scarlett-guard/releases/latest/download/scarlett-guard.zip">
+      <img src="https://shieldcn.dev/github/downloads-asset/asd880921/scarlett-guard/scarlett-guard.zip.svg?style=for-the-badge&label=downloads&labelColor=24292f&color=2ea44f" alt="Downloads" />
+    </a>
+  </p>
+  <p>
+    <img src="https://img.shields.io/github/v/release/asd880921/scarlett-guard?style=for-the-badge&label=latest%20release" alt="Latest release" />
+    <img src="https://img.shields.io/badge/license-MIT-22C55E?style=for-the-badge" alt="License MIT" />
+    <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=for-the-badge" alt="Windows 10 | 11" />
+  </p>
+  <p><a href="README.md">English</a> · <b>繁體中文</b></p>
+</div>
 
 ---
 
@@ -20,16 +30,13 @@ Windows 10 / 11 ・ Python 3.11+ ・ MIT
 
 ## 安裝
 
-```powershell
-cd scarlett-guard
-py -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-start.bat
-```
+[下載 `scarlett-guard.zip`](https://github.com/asd880921/scarlett-guard/releases/latest/download/scarlett-guard.zip)，解壓縮，對 `Scarlett Guard.exe` 按右鍵**以系統管理員身分執行**。不需要裝 Python。
 
-把設定頁的「開機自動啟動」打開，它就會常駐在系統匣。
+> 請先解壓縮再執行，不要直接在壓縮檔裡點開。
 
-換綁驅動需要系統管理員權限。程式不會一啟動就丟 UAC 給你，未提權時照樣開得起來，只是切換和重置停用，視窗上方會有按鈕讓你決定要不要重開。開機自動啟動走的是工作排程器的登入工作，之後就不會再跳 UAC 了。
+換綁驅動需要系統管理員權限。程式不會一啟動就丟 UAC 給你，未提權時照樣開得起來，只是切換和重置停用，視窗上方會有按鈕讓你決定要不要重開。
+
+把設定頁的「開機自動啟動」打開，它就會常駐在系統匣。那走的是工作排程器的登入工作，之後不會再跳 UAC。
 
 ---
 
@@ -132,12 +139,26 @@ Windows 的托盤選單是一次性快照。pystray 只在啟動時、以及每�
 ## 開發
 
 <details>
-<summary>專案結構</summary>
+<summary>從原始碼執行與打包</summary>
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+start.bat                                       # 以系統管理員啟動
+powershell -ExecutionPolicy Bypass -File build.ps1   # 打包成 dist/scarlett-guard.zip
+```
+
+發佈：更新 `VERSION` → commit → `git tag v2.0.0` → `git push origin v2.0.0`。
+GitHub Actions 會核對 `VERSION` 與 tag 是否一致，跑介面檢查、打包，然後自動建 Release。
 
 ```
 run.py                     啟動器
 start.bat                  以系統管理員啟動
+build.ps1                  一鍵建置（onedir + zip）
+scarlett_guard.spec        PyInstaller 設定
+VERSION                    版本號單一來源
 tools/check_ui.py          介面一致性檢查
+tools/make_icon.py         從系統匣的繪製程式產生 assets/icon.ico
 src/scarlett_guard/
   main.py                  組裝服務、系統匣與視窗
   service.py               核心服務層，UI 與系統匣都只跟這一層對話

@@ -7,10 +7,9 @@ from __future__ import annotations
 
 import locale
 import subprocess
-from pathlib import Path
 
 from .i18n import t
-from .paths import pythonw_exe, project_root
+from .paths import launch_target
 
 TASK_NAME = "ScarlettGuard"
 _CREATE_NO_WINDOW = 0x08000000
@@ -30,9 +29,9 @@ def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def _launch_command() -> str:
-    exe = pythonw_exe()
-    script = Path(project_root()) / "run.py"
-    return f'"{exe}" "{script}" --tray'
+    exe, prefix = launch_target()
+    parts = [exe, *prefix, "--tray"]
+    return " ".join(f'"{p}"' for p in parts)
 
 
 def is_enabled() -> bool:

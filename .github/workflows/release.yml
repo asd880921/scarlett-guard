@@ -1,0 +1,65 @@
+name: Release
+
+# 推 tag 就發佈：git tag v2.0.0 ; git push origin v2.0.0
+# （也可以在 Actions 頁面手動觸發，用來測試建置有沒有壞）
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # 建立 Release 需要
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # 與開發環境一致，避免打包結果有差異
+
+      - name: 檢查 VERSION 與 tag 一致
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          Write-Host "VERSION=$version  tag=$tag"
+          if ($version -ne $tag) {
+            throw "VERSION ($version) 與 tag ($tag) 不一致；側欄會顯示錯的版本"
+          }
+
+      - name: 安裝相依套件
+        run: python -m pip install --upgrade pip ; python -m pip install -r requirements.txt
+
+      - name: 介面一致性檢查
+        # UI 沒有編譯期，文案 key 打錯只會讓畫面安靜地半殘 —— 不該讓它進到 Release
+        run: python tools/check_ui.py
+
+      - name: 產生圖示 (與系統匣同一份繪製程式)
+        run: python tools/make_icon.py
+
+      - name: 打包 (PyInstaller onedir)
+        run: python -m PyInstaller --clean --noconfirm scarlett_guard.spec
+
+      - name: 壓成 zip
+        shell: pwsh
+        # 檔名固定：README 的下載連結指向
+        # /releases/latest/download/scarlett-guard.zip
+        run: Compress-Archive -Path "dist/Scarlett Guard" -DestinationPath dist/scarlett-guard.zip -CompressionLevel Optimal -Force
+
+      - name: 上傳建置產物 (手動觸發時可下載檢查)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scarlett-guard
+          path: dist/scarlett-guard.zip
+
+      - name: 建立 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # 用 runner 內建的 gh CLI，不引入第三方 action
+        run: gh release create "${{ github.ref_name }}" dist/scarlett-guard.zip --title "${{ github.ref_name }}" --generate-notes

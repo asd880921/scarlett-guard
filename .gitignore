@@ -2,12 +2,21 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-build/
-dist/
 .pytest_cache/
 .mypy_cache/
+
+# PyInstaller 產物
+build/
+dist/
+*.manifest
 
 # 執行期資料實際存在 %APPDATA%\ScarlettGuard，這裡只是保險
 *.log
 config.json
 history.jsonl
+
+# OS / 編輯器
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

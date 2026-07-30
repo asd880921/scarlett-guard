@@ -10,7 +10,7 @@ import traceback
 from typing import Any, Callable
 
 from . import device, elevation, hotkey, i18n
-from .paths import HISTORY_PATH, CONFIG_PATH, data_dir
+from .paths import HISTORY_PATH, CONFIG_PATH, app_version, data_dir
 from .service import GuardService
 
 
@@ -73,6 +73,7 @@ class Api:
         return {
             "ok": True,
             "device_pending": True,
+            "version": app_version(),
             "config": self._service.config.as_dict(),
             "history": self._service.history.recent(30),
             "autostart": self._service.autostart_state(),

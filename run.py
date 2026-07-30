@@ -9,7 +9,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+# 打包後套件是由凍結的匯入器提供的，src/ 並不存在，插進去只會多一個死路徑
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from scarlett_guard.main import main  # noqa: E402
 

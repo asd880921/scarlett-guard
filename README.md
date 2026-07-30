@@ -1,9 +1,19 @@
-# Scarlett Guard
-
-**Your Scarlett makes you pick: the Focusrite driver has ASIO but breaks, the built-in one never breaks but has no ASIO. This lets you stop picking.**
-
-Windows 10 / 11 · Python 3.11+ · MIT
-**English** · [繁體中文](README.zh-TW.md)
+<div align="center">
+  <img src="assets/icon.ico" alt="icon"><br>
+  <h1>Scarlett Guard</h1>
+  <p>One-click driver switching for the Focusrite Scarlett. No more static or dropouts day to day, and you keep ASIO when you record.</p>
+  <p>
+    <a href="https://github.com/asd880921/scarlett-guard/releases/latest/download/scarlett-guard.zip">
+      <img src="https://shieldcn.dev/github/downloads-asset/asd880921/scarlett-guard/scarlett-guard.zip.svg?style=for-the-badge&label=downloads&labelColor=24292f&color=2ea44f" alt="Downloads" />
+    </a>
+  </p>
+  <p>
+    <img src="https://img.shields.io/github/v/release/asd880921/scarlett-guard?style=for-the-badge&label=latest%20release" alt="Latest release" />
+    <img src="https://img.shields.io/badge/license-MIT-22C55E?style=for-the-badge" alt="License MIT" />
+    <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=for-the-badge" alt="Windows 10 | 11" />
+  </p>
+  <p><b>English</b> · <a href="README.zh-TW.md">繁體中文</a></p>
+</div>
 
 ---
 
@@ -20,16 +30,13 @@ Both drivers stay installed. Switch back any time — no reinstall, no reboot.
 
 ## Install
 
-```powershell
-cd scarlett-guard
-py -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-start.bat
-```
+[Download `scarlett-guard.zip`](https://github.com/asd880921/scarlett-guard/releases/latest/download/scarlett-guard.zip), unzip it, then right-click `Scarlett Guard.exe` and **Run as administrator**. No Python needed.
 
-Turn on **Start with Windows** in Settings and it lives in the tray.
+> Unzip first. Don't run it from inside the archive.
 
-Rebinding a driver needs administrator rights. The app won't throw a UAC prompt at you on launch — unelevated it still opens, switching and reset are just disabled, and a banner offers to relaunch. Start with Windows uses a Task Scheduler logon task, so after that you never see UAC again.
+Rebinding a driver needs administrator rights. The app won't throw a UAC prompt at you on launch — unelevated it still opens, switching and reset are just disabled, and a banner offers to relaunch.
+
+Turn on **Start with Windows** in Settings and it lives in the tray. That uses a Task Scheduler logon task, so you won't see UAC again after that.
 
 ---
 
@@ -132,12 +139,26 @@ This mitigates the symptom. It does not fix the driver.
 ## Development
 
 <details>
-<summary>Project layout</summary>
+<summary>Running from source, and building</summary>
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+start.bat                                            # launch elevated
+powershell -ExecutionPolicy Bypass -File build.ps1   # build dist/scarlett-guard.zip
+```
+
+To release: bump `VERSION`, commit, `git tag v2.0.0`, `git push origin v2.0.0`.
+GitHub Actions checks `VERSION` against the tag, runs the UI check, builds, and creates the Release.
 
 ```
 run.py                     Launcher
 start.bat                  Launch elevated
+build.ps1                  One-shot build (onedir + zip)
+scarlett_guard.spec        PyInstaller config
+VERSION                    Single source of truth for the version
 tools/check_ui.py          UI consistency check
+tools/make_icon.py         Generates assets/icon.ico from the tray drawing code
 src/scarlett_guard/
   main.py                  Wires up the service, tray and window
   service.py               Core service layer; UI and tray only talk to this

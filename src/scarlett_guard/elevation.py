@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import ctypes
 import sys
-from pathlib import Path
 
-from .paths import project_root, python_exe
+from .paths import launch_target, project_root
 
 
 def is_elevated() -> bool:
@@ -25,14 +24,14 @@ def relaunch_as_admin() -> tuple[bool, str]:
     if is_elevated():
         return False, "目前已經是系統管理員權限"
 
-    script = Path(project_root()) / "run.py"
-    args = [str(script)] + [a for a in sys.argv[1:] if a != "--elevated"]
+    exe, prefix = launch_target()
+    args = prefix + [a for a in sys.argv[1:] if a != "--elevated"]
     params = " ".join(f'"{a}"' for a in args)
 
     try:
         # 大於 32 代表 ShellExecute 成功
         result = ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", python_exe(), params, str(project_root()), 1
+            None, "runas", exe, params, str(project_root()), 1
         )
     except Exception as exc:
         return False, f"提權失敗：{exc}"
