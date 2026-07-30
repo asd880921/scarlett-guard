@@ -56,17 +56,10 @@ class Application:
         self.window.events.closing += self._on_closing
 
         self.tray = Tray(
-            on_reset=lambda: self.service.reset("tray"),
+            on_reset=self._tray_reset,
             on_show=self._show_window,
             on_quit=self.quit,
-            on_switch_mode=lambda mode: self.service.switch_driver_mode(mode, "tray"),
-            # 用快取的探測結果 —— 選單每次開啟都會呼叫 checked，
-            # 在那裡跑 PowerShell 會讓選單卡好幾秒才展開
-            # 這兩個回呼跑在 pystray 的 UI 執行緒上，只能讀快取、不能查詢，
-            # 否則每次開選單都會卡住好幾秒
-            current_mode=lambda: str(self.service.cached_driver_mode().get("mode", "")),
-            reset_available=self.service.reset_available,
-            is_busy=self.service.is_busy,
+            on_switch_mode=self._tray_switch_mode,
         )
         self.tray.start()
 
@@ -109,6 +102,43 @@ class Application:
         except Exception:
             pass
 
+    # ------------------------------------------------------------------
+    # 系統匣動作
+    # ------------------------------------------------------------------
+    # 托盤選單的項目一律可點（原因見 tray.py 的說明），所以「此刻不適用」
+    # 必須由這裡回饋 —— 被擋下的動作不會寫紀錄，也就不會觸發下面那組
+    # 依紀錄發出的通知，靜靜地什麼都沒發生對使用者是最糟的結果。
+    def _tray_reset(self) -> None:
+        self._notify_if_blocked(self.service.reset("tray"))
+
+    def _tray_switch_mode(self, mode: str) -> None:
+        self._notify_if_blocked(self.service.switch_driver_mode(mode, "tray"))
+
+    def _notify_if_blocked(self, result: dict[str, Any]) -> None:
+        if self.tray is None or result.get("ok"):
+            return
+        if not result.get("blocked") and result.get("message"):
+            # 一般失敗已經由紀錄那條路徑通知過了，不要重複
+            return
+        message = str(result.get("message") or "")
+        if message:
+            self.tray.notify(message, str(result.get("detail") or "")[:200])
+
+    def _sync_tray_title(self, mode_state: dict[str, Any] | None = None) -> None:
+        """把目前的驅動模式寫進 tooltip。
+
+        托盤選單沒有勾號（會過期），所以這是唯一即時的狀態指示。
+        """
+        if self.tray is None:
+            return
+        state = mode_state if mode_state is not None else self.service.cached_driver_mode()
+        mode = str(state.get("mode") or "")
+        if mode in ("daily", "asio"):
+            label = t("mode.daily") if mode == "daily" else t("mode.asio")
+            self.tray.set_title(f"{t('tray.title')} — {label}")
+        else:
+            self.tray.set_title(t("tray.title"))
+
     def quit(self) -> None:
         if self._quitting:
             return
@@ -139,6 +169,9 @@ class Application:
 
         if channel == "busy" and self.tray is not None:
             self.tray.set_state("busy" if payload.get("busy") else "ok")
+
+        if channel == "driver_mode":
+            self._sync_tray_title(payload)
 
         if channel == "history" and self.tray is not None:
             event = str(payload.get("event", ""))
@@ -210,8 +243,11 @@ class Application:
             try:
                 if tick % 10 == 0:
                     self._push("device", self.service.snapshot())
-                if tick % 30 == 0:
+                # tick == 3 是為了盡早跑一次：系統匣的 tooltip 靠這條路徑
+                # 才知道目前是哪個模式，等到 30 秒太久了。
+                if tick == 3 or tick % 30 == 0:
                     self._push("driver_mode", self.service.driver_mode())
+                    self._sync_tray_title()
             except Exception:
                 continue
 

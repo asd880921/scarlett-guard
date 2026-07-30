@@ -155,7 +155,7 @@ class GuardService:
     def switch_driver_mode(self, mode: str, source: str = "manual") -> dict[str, Any]:
         """切換驅動模式。"""
         if not self._action_lock.acquire(blocking=False):
-            return {"ok": False, "message": t("mode.busy"), "detail": ""}
+            return {"ok": False, "message": t("mode.busy"), "detail": "", "blocked": True}
 
         try:
             self._busy = True
@@ -184,7 +184,7 @@ class GuardService:
     def repair_driver_binding(self) -> dict[str, Any]:
         """救回卡在「沒有驅動」或「音訊路徑沒起來」狀態的裝置。"""
         if not self._action_lock.acquire(blocking=False):
-            return {"ok": False, "message": t("mode.busy"), "detail": ""}
+            return {"ok": False, "message": t("mode.busy"), "detail": "", "blocked": True}
         try:
             self._busy = True
             self._emit("busy", {"busy": True, "source": "mode:repair"})
@@ -220,10 +220,6 @@ class GuardService:
     # ------------------------------------------------------------------
     # 重置 —— 軟體版拔插
     # ------------------------------------------------------------------
-    def is_busy(self) -> bool:
-        """是否有裝置動作進行中。給系統匣判斷選單項目要不要灰掉。"""
-        return self._busy
-
     def reset_available(self) -> bool:
         """重置只在錄音模式下有意義，而且也只有那時才會成功。
 
@@ -254,7 +250,7 @@ class GuardService:
             }
 
         if not self._action_lock.acquire(blocking=False):
-            return {"ok": False, "message": t("dev.busy"), "detail": ""}
+            return {"ok": False, "message": t("dev.busy"), "detail": "", "blocked": True}
 
         try:
             self._busy = True
