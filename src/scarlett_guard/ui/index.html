@@ -33,6 +33,11 @@
       </nav>
 
       <div class="sidebar-foot">
+        <!-- 只在真的有新版時才出現，沒有更新時側欄不該多一列東西 -->
+        <button class="pill pill-action" id="update-pill" hidden>
+          <span class="dot"></span><span id="update-text"></span>
+          <span class="pill-arrow" aria-hidden="true">↗</span>
+        </button>
         <div class="pill" id="elevation-pill" data-tone="idle">
           <span class="dot"></span><span id="elevation-text" data-i18n="elev.checking"></span>
         </div>

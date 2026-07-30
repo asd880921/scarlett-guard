@@ -191,7 +191,11 @@ body::before {
   font-size: 13px; opacity: .85;
 }
 
-.sidebar-foot { margin-top: auto; padding: 0 4px; }
+.sidebar-foot {
+  margin-top: auto;
+  padding: 0 4px;
+  display: flex; flex-direction: column; gap: 6px;
+}
 
 .pill {
   display: inline-flex; align-items: center; gap: 7px;
@@ -210,6 +214,22 @@ body::before {
 .pill[data-tone="ok"]    .dot { background: var(--green); }
 .pill[data-tone="warn"]  .dot { background: var(--amber); }
 .pill[data-tone="error"] .dot { background: var(--red); }
+
+/* 更新提示：可點的 pill。用琥珀色而不是紅色 —— 有新版是資訊，不是錯誤，
+   不該和「權限不足」那種真的擋住你的狀態搶同一個視覺層級。 */
+.pill-action {
+  border: 0;
+  font: inherit; font-size: 11.5px; font-weight: 500;
+  text-align: left; cursor: pointer;
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--text);
+  transition: background var(--press), transform var(--press);
+}
+.pill-action .dot { background: var(--amber); }
+.pill-action:hover { background: color-mix(in srgb, var(--amber) 26%, transparent); }
+/* 回饋在按下的當下發生，不等 click */
+.pill-action:active { transform: scale(0.97); }
+.pill-arrow { margin-left: auto; opacity: .6; font-size: 11px; }
 
 /* 主要區域 */
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }

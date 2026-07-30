@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from . import autostart, device, driver_mode, hotkey, i18n
+from . import autostart, device, driver_mode, hotkey, i18n, updater
 from .i18n import t
 from .config import Config
 from .history import History
@@ -35,6 +35,9 @@ class GuardService:
         self._inf_at = 0.0
 
         self.hotkeys = hotkey.HotkeyManager(on_trigger=lambda: self.reset("hotkey"))
+        self.updates = updater.UpdateChecker(
+            on_done=lambda info: self._emit("update", info)
+        )
 
     # ------------------------------------------------------------------
     # 啟動 / 關閉
@@ -42,6 +45,8 @@ class GuardService:
     def start(self) -> None:
         self.history.log("app_start", elevated=device.is_elevated())
         self.hotkeys.apply(self.config.get("hotkey"), self.config.get("hotkey_enabled"))
+        # 背景查一次就好。查不到會安靜跳過，不影響任何功能。
+        self.updates.start()
 
     def shutdown(self) -> None:
         self.hotkeys.stop()

@@ -9,7 +9,7 @@ import functools
 import traceback
 from typing import Any, Callable
 
-from . import device, elevation, hotkey, i18n
+from . import device, elevation, hotkey, i18n, updater
 from .paths import HISTORY_PATH, CONFIG_PATH, app_version, data_dir
 from .service import GuardService
 
@@ -74,6 +74,9 @@ class Api:
             "ok": True,
             "device_pending": True,
             "version": app_version(),
+            # 檢查可能在 UI 就緒前就跑完了，那樣就不會有 update 事件推過來，
+            # 所以這裡也帶一份目前狀態
+            "update": self._service.updates.result,
             "config": self._service.config.as_dict(),
             "history": self._service.history.recent(30),
             "autostart": self._service.autostart_state(),
@@ -182,6 +185,10 @@ class Api:
             "js_error", where=str(where)[:120], detail=str(detail)[:2000]
         )
         return {"ok": True, "logged": record["iso"]}
+
+    @_safe
+    def open_release_page(self, url: str = "") -> dict[str, Any]:
+        return {"ok": updater.open_release_page(str(url or ""))}
 
     @_safe
     def open_data_folder(self) -> dict[str, Any]:

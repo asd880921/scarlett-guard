@@ -52,6 +52,7 @@
     config: {},
     device: null,
     driverMode: null,
+    update: null,
     modePending: '',
     ghosts: [],
     history: [],
@@ -140,6 +141,7 @@
     // 動態產生的內容不受 data-i18n 影響，必須自己重畫一次
     renderViewHeader();
     if (state.driverMode) renderDriverMode(state.driverMode);
+    if (state.update) renderUpdate(state.update);
     renderTech();
     renderResetButton();
     renderHistory(state.history);
@@ -267,6 +269,20 @@
     $('#elevation-text').textContent = elevated ? t('elev.admin') : t('elev.none');
     $('#elevation-banner').hidden = !!elevated;
     renderResetButton();
+  }
+
+  // ================================================================ 更新提示
+
+  /** 有新版才顯示。沒有更新時側欄不該多出一列東西。 */
+  function renderUpdate(info) {
+    if (!info) return;
+    state.update = info;
+    const pill = $('#update-pill');
+    const show = !!(info.available && info.latest);
+    pill.hidden = !show;
+    if (!show) return;
+    $('#update-text').textContent = t('update.available', { version: info.latest });
+    pill.title = t('update.tip', { version: info.latest });
   }
 
   // ================================================================ 驅動模式（主功能）
@@ -700,6 +716,9 @@
           if (state.driverMode) renderDriverMode(state.driverMode);
           renderResetButton();
           break;
+        case 'update':
+          renderUpdate(payload);
+          break;
         case 'toast':
           // 後端主動要求顯示的提示（例如從系統匣點到此刻不適用的動作）
           toast(payload.title || '', payload.body || '', payload.tone || 'info', 6000);
@@ -732,6 +751,8 @@
     });
     $('#btn-minimise').addEventListener('click', () => call('hide_window'));
     $('#btn-elevate').addEventListener('click', () => call('relaunch_elevated'));
+    $('#update-pill').addEventListener('click', () =>
+      call('open_release_page', (state.update && state.update.url) || ''));
 
     // --- 驅動模式 ---
     $('#modeswitch').addEventListener('click', (event) => {
@@ -862,6 +883,7 @@
     state.history = data.history || [];
     // 版本號的單一來源是 VERSION 檔，寫死在 HTML 裡遲早會和 tag 對不上
     if (data.version) $('#brand-version').textContent = `v${data.version}`;
+    renderUpdate(data.update);
 
     applyLanguage(state.config.language || 'auto');
     applyElevation(data.elevated);
