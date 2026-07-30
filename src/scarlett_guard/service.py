@@ -31,6 +31,8 @@ class GuardService:
         self._snapshot_at = 0.0
         self._cached_mode: dict[str, Any] = {}
         self._mode_at = 0.0
+        self._cached_inf = ""
+        self._inf_at = 0.0
 
         self.hotkeys = hotkey.HotkeyManager(on_trigger=lambda: self.reset("hotkey"))
 
@@ -76,20 +78,20 @@ class GuardService:
         self._snapshot_at = 0.0
         self._mode_at = 0.0
 
-    def _emit_fresh_state(self) -> None:
-        """動作收尾後在背景強制查一次並推送給 UI 與系統匣。
+    def _emit_fresh_state(self, refresh_mode: bool = False) -> None:
+        """動作收尾後在背景刷新狀態並推送給 UI 與系統匣。
 
-        刻意放到背景執行緒：這兩支 PowerShell 合起來要五到八秒，擺在呼叫路徑上
-        會讓「已切換完成」的提示晚好幾秒才出現 —— 而 busy 早就解除了，
+        刻意放到背景執行緒：查裝置要跑 PowerShell（好幾秒），擺在呼叫路徑上
+        會讓「已完成」的提示晚好幾秒才出現 —— 而 busy 早就解除了，
         使用者會看到按鈕先解鎖、結果才姍姍來遲，讀起來很不一致。
 
-        這是唯一該用 force 的地方；查完之後快取是熱的，前端隨後的補查
-        會直接命中快取，不會再多跑 PowerShell。
+        `refresh_mode` 只有在動作本身沒有探測過模式時（例如重置）才需要開；
+        切換與修復都已經把自己的探測結果餵回快取了，再查一次是白費。
         """
         def run() -> None:
             try:
                 self._emit("device", self.snapshot(force=True))
-                self._emit("driver_mode", self.driver_mode(force=True))
+                self._emit("driver_mode", self.driver_mode(force=refresh_mode))
             except Exception:
                 # 這只是 UI 的狀態刷新，失敗不該影響任何實際動作
                 pass
@@ -99,20 +101,56 @@ class GuardService:
     # ------------------------------------------------------------------
     # 驅動模式
     # ------------------------------------------------------------------
+    def _focusrite_inf(self) -> str:
+        """原廠 INF 的位置。查一次要跑 `pnputil /enum-drivers`（約兩秒），
+        但它只有在重裝驅動時才會變，所以快取久一點。"""
+        now = time.monotonic()
+        if self._cached_inf and now - self._inf_at < 60.0:
+            return self._cached_inf
+        self._cached_inf = str(
+            driver_mode.find_focusrite_inf(self.config.get("focusrite_inf_path")) or ""
+        )
+        self._inf_at = now
+        return self._cached_inf
+
+    def _decorate_mode(self, probe: dict[str, Any]) -> dict[str, Any]:
+        """把探測結果補上 UI 需要、但不必再跑 PowerShell 的欄位。"""
+        state = dict(probe)
+        state["busy"] = self._busy
+        state["elevated"] = device.is_elevated()
+        state["focusrite_inf"] = self._focusrite_inf()
+        return state
+
     def driver_mode(self, force: bool = False) -> dict[str, Any]:
         """目前的驅動模式與判斷依據。和 snapshot 一樣做快取，PowerShell 很慢。"""
         now = time.monotonic()
         if not force and self._cached_mode and now - self._mode_at < 3.0:
+            # busy 是即時狀態，不該被快取住
+            self._cached_mode["busy"] = self._busy
             return self._cached_mode
-        state = driver_mode.probe()
-        state["busy"] = self._busy
-        state["focusrite_inf"] = str(
-            driver_mode.find_focusrite_inf(self.config.get("focusrite_inf_path")) or ""
-        )
-        state["elevated"] = device.is_elevated()
-        self._cached_mode = state
+        self._cached_mode = self._decorate_mode(driver_mode.probe())
         self._mode_at = now
-        return state
+        return self._cached_mode
+
+    def cached_driver_mode(self) -> dict[str, Any]:
+        """只回最後一次已知的狀態，**絕不查詢**。
+
+        給系統匣選單用：選單的 checked / enabled 回呼跑在 pystray 的 UI 執行緒上，
+        在那裡跑 PowerShell 會讓整個選單凍住好幾秒，切換進行中甚至會卡到沒有回應。
+        """
+        return self._cached_mode or {}
+
+    def _seed_mode_cache(self, probe: dict[str, Any] | None) -> None:
+        """用動作自己已經做過的探測結果餵回快取。
+
+        切換與修復在收尾前都已經完整探測過一次，沒有理由再查一遍 —— 更重要的是，
+        不餵回去的話前端會有五到八秒拿到的還是**切換前**的狀態：重置按鈕會依舊狀態
+        誤判成可按，模式指示器也會先跳回舊位置、過幾秒才彈回來。
+        """
+        if not probe:
+            return
+        self._cached_mode = self._decorate_mode(probe)
+        self._mode_at = time.monotonic()
 
     def switch_driver_mode(self, mode: str, source: str = "manual") -> dict[str, Any]:
         """切換驅動模式。"""
@@ -129,9 +167,14 @@ class GuardService:
                 settle_seconds=float(self.config.get("mode_settle_seconds", 2.0)),
             )
 
-            self.invalidate_snapshot()
+            self._snapshot_at = 0.0
+            # 切換自己已經探測過了，直接餵回快取；連同結果一起回傳，
+            # 前端就能在拿到結果的同一刻更新畫面，沒有任何一段舊狀態的空窗。
+            self._seed_mode_cache(result.extra.get("probe"))
             self._log_mode_switch(source, mode, result)
-            return result.to_dict()
+            payload = result.to_dict()
+            payload["driver_mode"] = self.driver_mode()
+            return payload
         finally:
             self._busy = False
             self._emit("busy", {"busy": False, "source": f"mode:{source}"})
@@ -148,9 +191,12 @@ class GuardService:
 
             result = driver_mode.repair()
 
-            self.invalidate_snapshot()
+            self._snapshot_at = 0.0
+            self._seed_mode_cache(result.extra.get("probe"))
             self._log_mode_switch("repair", result.extra.get("mode", ""), result)
-            return result.to_dict()
+            payload = result.to_dict()
+            payload["driver_mode"] = self.driver_mode()
+            return payload
         finally:
             self._busy = False
             self._emit("busy", {"busy": False, "source": "mode:repair"})
@@ -174,8 +220,39 @@ class GuardService:
     # ------------------------------------------------------------------
     # 重置 —— 軟體版拔插
     # ------------------------------------------------------------------
+    def is_busy(self) -> bool:
+        """是否有裝置動作進行中。給系統匣判斷選單項目要不要灰掉。"""
+        return self._busy
+
+    def reset_available(self) -> bool:
+        """重置只在錄音模式下有意義，而且也只有那時才會成功。
+
+        日常模式走的是 Windows 內建類別驅動，本來就沒有原廠驅動那個
+        「丟包後不重新同步」的缺陷 —— 沒有東西需要重置。而且真的按下去也會失敗：
+        `usbaudio2` 的音訊端點被 AudioEndpointBuilder 持有，
+        `pnputil /restart-device` 拆不掉子節點，只會回 exit 3010
+        （System reboot is needed），備援的 Disable-PnpDevice 同樣失敗。
+
+        刻意讀快取而不另外查：熱鍵路徑上多跑一支 PowerShell 會讓按下去卡三秒。
+        還沒探測過時一律放行 —— 這是救援工具，不確定的時候不該擋住使用者。
+        """
+        mode = (self._cached_mode or {}).get("mode", "")
+        return mode != driver_mode.MODE_DAILY
+
     def reset(self, source: str = "manual") -> dict[str, Any]:
         """source: manual | hotkey | tray"""
+        if not self.reset_available():
+            # 熱鍵在日常模式下單純失效，不發任何訊息、也不寫紀錄 ——
+            # 使用者按到的是一個此刻不適用的快捷鍵，不是出了錯。
+            if source == "hotkey":
+                return {"ok": False, "message": "", "detail": "", "blocked": True}
+            return {
+                "ok": False,
+                "message": t("reset.blocked"),
+                "detail": t("reset.blocked.detail"),
+                "blocked": True,
+            }
+
         if not self._action_lock.acquire(blocking=False):
             return {"ok": False, "message": t("dev.busy"), "detail": ""}
 
@@ -206,7 +283,9 @@ class GuardService:
         finally:
             self._busy = False
             self._emit("busy", {"busy": False, "source": source})
-            self._emit_fresh_state()
+            # 重置沒有自己探測模式，而重新列舉可能改變 complete / adapter_id，
+            # 所以這裡要真的重查一次
+            self._emit_fresh_state(refresh_mode=True)
             self._action_lock.release()
 
     def _log_reset(self, source: str, result: device.ActionResult, device_name: str) -> None:

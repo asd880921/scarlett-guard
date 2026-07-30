@@ -54,11 +54,15 @@ class Tray:
         on_quit: Callable[[], None],
         on_switch_mode: Callable[[str], None] | None = None,
         current_mode: Callable[[], str] | None = None,
+        reset_available: Callable[[], bool] | None = None,
+        is_busy: Callable[[], bool] | None = None,
     ) -> None:
         self._on_reset = on_reset
         self._on_show = on_show
         self._on_quit = on_quit
         self._on_switch_mode = on_switch_mode
+        self._reset_available = reset_available
+        self._is_busy = is_busy
         self._current_mode = current_mode
         self._icon = None
         self._thread: threading.Thread | None = None
@@ -78,7 +82,9 @@ class Tray:
             # 重置刻意「不」設為 default：預設動作會綁到左鍵雙擊，
             # 而重置會中斷音訊數秒，誤觸的代價太高。
             # 雙擊留給開啟視窗這個無害的動作，快速重置則交給全域熱鍵。
-            pystray.MenuItem(t("tray.reset"), self._reset),
+            #
+            # 日常模式下灰掉：那時重置既沒有意義也一定會失敗（見 service.reset_available）。
+            pystray.MenuItem(t("tray.reset"), self._reset, enabled=self._reset_enabled),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(t("tray.open"), self._show, default=True),
             pystray.MenuItem(t("tray.quit"), self._quit),
@@ -117,10 +123,32 @@ class Tray:
 
     # --- pystray 回呼 ---
     def _reset(self, *_args) -> None:
+        # 重置是阻塞式的，絕不能在 pystray 的選單執行緒上跑，否則整個系統匣會凍住
+        if self._busy():
+            return
         threading.Thread(target=self._on_reset, daemon=True).start()
 
     def _show(self, *_args) -> None:
         self._on_show()
+
+    # --- 選單狀態 ---
+    #
+    # 這些回呼會在 pystray 的 UI 執行緒上、每次開啟選單時被呼叫。
+    # 它們**絕對不能做任何 I/O** —— 之前在這裡查驅動模式（會跑 PowerShell），
+    # 結果就是選單常常凍住好幾秒、切換進行中甚至完全叫不出來。
+    # 現在一律只讀已快取的值。
+
+    def _busy(self) -> bool:
+        return bool(self._is_busy and self._is_busy())
+
+    def _reset_enabled(self, _item=None) -> bool:
+        if self._busy():
+            return False
+        return bool(self._reset_available is None or self._reset_available())
+
+    def _mode_enabled(self, _item=None) -> bool:
+        # 切換進行中不允許再從選單觸發任何裝置動作
+        return not self._busy()
 
     def _mode_menu(self):
         """驅動模式子選單。勾號反映目前實際綁定的驅動。"""
@@ -129,13 +157,14 @@ class Tray:
                 t(label_key),
                 lambda *_a: self._switch_mode(mode),
                 checked=lambda _i, m=mode: (self._current_mode or (lambda: ""))() == m,
+                enabled=self._mode_enabled,
                 radio=True,
             )
 
         return pystray.Menu(item("daily", "mode.daily"), item("asio", "mode.asio"))
 
     def _switch_mode(self, mode: str) -> None:
-        if self._on_switch_mode is None:
+        if self._on_switch_mode is None or self._busy():
             return
         # 切換是阻塞式的（十幾秒），絕不能在 pystray 的選單執行緒上跑，
         # 否則整個系統匣選單會凍住

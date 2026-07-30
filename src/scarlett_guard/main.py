@@ -30,6 +30,11 @@ class Application:
         self._ui_ready = threading.Event()
         self._quitting = False
         self._start_hidden = start_hidden
+        # 推送到 UI 的待送資料。以 channel 為鍵，天然做到合併 ——
+        # 短時間內同一頻道連推兩次時只會送出最後一份。
+        self._pending: dict[str, dict[str, Any]] = {}
+        self._pending_lock = threading.Lock()
+        self._pending_event = threading.Event()
 
     # ------------------------------------------------------------------
     def run(self) -> None:
@@ -57,7 +62,11 @@ class Application:
             on_switch_mode=lambda mode: self.service.switch_driver_mode(mode, "tray"),
             # 用快取的探測結果 —— 選單每次開啟都會呼叫 checked，
             # 在那裡跑 PowerShell 會讓選單卡好幾秒才展開
-            current_mode=lambda: str(self.service.driver_mode().get("mode", "")),
+            # 這兩個回呼跑在 pystray 的 UI 執行緒上，只能讀快取、不能查詢，
+            # 否則每次開選單都會卡住好幾秒
+            current_mode=lambda: str(self.service.cached_driver_mode().get("mode", "")),
+            reset_available=self.service.reset_available,
+            is_busy=self.service.is_busy,
         )
         self.tray.start()
 
@@ -66,6 +75,7 @@ class Application:
             self.instance.listen(self._show_window)
 
         threading.Thread(target=self._poll_loop, name="poll", daemon=True).start()
+        threading.Thread(target=self._push_loop, name="push", daemon=True).start()
 
         webview.start(self._on_started, debug=False)
         self._teardown()
@@ -150,16 +160,38 @@ class Application:
                 self.tray.notify(t("tray.title"), str(payload.get("message", "")))
 
     def _push(self, channel: str, payload: dict[str, Any]) -> None:
+        """把資料排進佇列，交給唯一的推送執行緒送出。
+
+        **不可以直接呼叫 evaluate_js。** 事件來源有好幾個（輪詢執行緒、系統匣觸發的
+        切換工作執行緒、動作收尾的背景刷新執行緒），而 evaluate_js 是阻塞式的、
+        底層又是 WebView2 的 COM 物件 —— 多執行緒同時呼叫會讓視窗整個沒有回應。
+        全部收斂到單一執行緒送出，順便合併掉短時間內的重複推送。
+        """
         if not self._ui_ready.is_set() or self.window is None:
             return
-        try:
-            data = json.dumps({"channel": channel, "payload": payload}, ensure_ascii=False)
-            self.window.evaluate_js(
-                f"window.SG && window.SG.onEvent && window.SG.onEvent({data})"
-            )
-        except Exception:
-            # 視窗關閉中或 JS 尚未載入完成，忽略即可
-            pass
+        with self._pending_lock:
+            self._pending[channel] = payload
+        self._pending_event.set()
+
+    def _push_loop(self) -> None:
+        while not self._quitting:
+            self._pending_event.wait(0.25)
+            self._pending_event.clear()
+            with self._pending_lock:
+                batch, self._pending = self._pending, {}
+            if not batch or self.window is None:
+                continue
+            for channel, payload in batch.items():
+                try:
+                    data = json.dumps(
+                        {"channel": channel, "payload": payload}, ensure_ascii=False
+                    )
+                    self.window.evaluate_js(
+                        f"window.SG && window.SG.onEvent && window.SG.onEvent({data})"
+                    )
+                except Exception:
+                    # 視窗關閉中或 JS 尚未載入完成，忽略即可
+                    continue
 
     def _poll_loop(self) -> None:
         """定期把裝置狀態推給 UI。

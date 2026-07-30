@@ -293,6 +293,8 @@
 
     renderModeStatus(data);
     renderTech();
+    // 重置能不能按取決於目前是哪個模式，所以模式一變就要重算
+    renderResetButton();
   }
 
   function renderModeStatus(data) {
@@ -345,6 +347,20 @@
     if (result && result.driver_mode) renderDriverMode(result.driver_mode);
   }
 
+  /** 套用動作結果裡附帶的驅動模式狀態。
+   *
+   * 後端在切換／修復收尾時會把自己剛探測到的狀態一起回傳，所以這裡是**權威**的。
+   * 就算沒帶（舊路徑或呼叫失敗），也一定要用現有狀態重繪一次 —— modePending
+   * 剛被清掉，不重繪的話指示器會停在「暫定」位置、按鈕啟用狀態也不會更新。
+   */
+  function applyModeResult(result) {
+    if (result && result.driver_mode) {
+      renderDriverMode(result.driver_mode);
+    } else if (state.driverMode) {
+      renderDriverMode(state.driverMode);
+    }
+  }
+
   async function doSwitchMode(mode) {
     const data = state.driverMode;
     if (!data || state.busy || state.modePending) return;
@@ -357,6 +373,9 @@
 
     const result = await call('switch_driver_mode', mode);
     state.modePending = '';
+    // 後端把切換後的狀態一起帶回來了，立刻套用 —— 不能等背景推送，
+    // 那中間有好幾秒會拿舊狀態算出「重置可按」「指示器該回到舊模式」等錯誤結論
+    applyModeResult(result);
 
     if (result && result.ok) {
       toast(t('toast.mode.ok', { mode: modeLabel(mode) }), result.detail || '', 'ok', 6000);
@@ -381,6 +400,7 @@
 
     const result = await call('repair_driver_binding');
     state.modePending = '';
+    applyModeResult(result);
 
     toast(
       result && result.ok ? t('toast.mode.repaired') : t('toast.mode.repair.fail'),
@@ -399,16 +419,27 @@
     const btn = $('#btn-reset');
     if (!btn) return;
     const primary = state.device && state.device.primary;
-    btn.disabled = !state.elevated || !primary || state.busy || !!state.modePending;
+    // 日常模式下重置既沒有意義也一定會失敗（內建驅動沒有那個缺陷，
+    // 而且 pnputil 拆不掉被音訊引擎持有的子節點）。直接停用，不要讓人按了才知道。
+    const dailyMode = !!state.driverMode && state.driverMode.mode === 'daily';
+
+    btn.disabled =
+      !state.elevated || !primary || dailyMode || state.busy || !!state.modePending;
+
     $('#reset-hint').textContent = !state.elevated
       ? t('reset.sub.noadmin')
-      : primary
-        ? t('reset.sub')
-        : t('reset.sub.nodevice');
+      : !primary
+        ? t('reset.sub.nodevice')
+        : dailyMode
+          ? t('reset.sub.dailymode')
+          : t('reset.sub');
   }
 
   async function doReset(source = 'manual') {
     if (state.busy || state.modePending) return;
+    // 按鈕在日常模式下本來就是停用的，這裡再擋一次是防呆：
+    // 萬一狀態一時不同步而讓它可按，也不該真的送出一個註定失敗的請求。
+    if (state.driverMode && state.driverMode.mode === 'daily') return;
     const btn = $('#btn-reset');
     btn.classList.add('is-busy');
     btn.disabled = true;
@@ -416,8 +447,12 @@
     const result = await call('reset', source);
 
     btn.classList.remove('is-busy');
+    renderResetButton();
     if (result && result.ok) {
       toast(t('toast.reset.ok'), t('toast.reset.ok.sub'), 'ok');
+    } else if (result && result.blocked) {
+      // 被閘門擋下不是錯誤，是這個動作此刻不適用
+      toast(result.message || '', result.detail || '', 'warn', 6000);
     } else {
       toast(
         t('toast.reset.fail'),

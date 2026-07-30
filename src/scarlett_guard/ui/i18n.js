@@ -35,9 +35,8 @@ window.I18N = (() => {
       'driver.version': '驅動版本',
       'driver.date': '驅動日期',
       'card.hotkey': '全域熱鍵',
-      'hotkey.combo': '組合鍵',
-      'hotkey.combo.sub': 'pynput 格式，例如 <ctrl>+<alt>+r',
-
+      'hotkey.combo': '按下時重置裝置',
+      'hotkey.combo.sub': 'pynput 格式，例如 <ctrl>+<alt>+r · 僅在錄音模式有效',
       'card.behaviour': '行為',
       'beh.autostart': '開機自動啟動',
       'beh.autostart.sub': '以工作排程器建立高權限登入工作，不會跳 UAC',
@@ -150,6 +149,7 @@ window.I18N = (() => {
       'log.title': '最近動作',
       'log.empty': '還沒有任何紀錄',
       'card.data': '設定與紀錄',
+      'reset.sub.dailymode': '僅在錄音模式可用',
     },
 
     'zh-Hans': {
@@ -180,9 +180,8 @@ window.I18N = (() => {
       'driver.version': '驱动版本',
       'driver.date': '驱动日期',
       'card.hotkey': '全局热键',
-      'hotkey.combo': '组合键',
-      'hotkey.combo.sub': 'pynput 格式，例如 <ctrl>+<alt>+r',
-
+      'hotkey.combo': '按下时重置设备',
+      'hotkey.combo.sub': 'pynput 格式，例如 <ctrl>+<alt>+r · 仅在录音模式有效',
       'card.behaviour': '行为',
       'beh.autostart': '开机自动启动',
       'beh.autostart.sub': '用任务计划程序建立高权限登录任务，不会弹 UAC',
@@ -294,6 +293,7 @@ window.I18N = (() => {
       'log.title': '最近动作',
       'log.empty': '还没有任何记录',
       'card.data': '设置与记录',
+      'reset.sub.dailymode': '仅在录音模式可用',
     },
 
     en: {
@@ -325,9 +325,8 @@ window.I18N = (() => {
       'driver.version': 'Driver version',
       'driver.date': 'Driver date',
       'card.hotkey': 'Global hotkey',
-      'hotkey.combo': 'Key combination',
-      'hotkey.combo.sub': 'pynput syntax, e.g. <ctrl>+<alt>+r',
-
+      'hotkey.combo': 'Resets the device when pressed',
+      'hotkey.combo.sub': 'pynput syntax, e.g. <ctrl>+<alt>+r · Studio mode only',
       'card.behaviour': 'Behaviour',
       'beh.autostart': 'Start with Windows',
       'beh.autostart.sub': 'Creates an elevated logon task, so no UAC prompt',
@@ -443,6 +442,7 @@ window.I18N = (() => {
       'log.title': 'Recent activity',
       'log.empty': 'Nothing logged yet',
       'card.data': 'Settings and log',
+      'reset.sub.dailymode': 'Available in Studio mode only',
     },
   };
 
