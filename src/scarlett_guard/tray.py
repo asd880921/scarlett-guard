@@ -126,11 +126,16 @@ class Tray:
         except Exception:
             pass
 
-    def notify(self, title: str, message: str) -> None:
+    def notify(self, title: str, message: str = "") -> None:
         if self._icon is None:
             return
+        # 本文絕不能是空字串：pystray 的「移除通知」就是送 szInfo=''，
+        # 傳空的等於叫它把通知收掉，結果是完全不顯示。
+        body = message.strip() or title
+        if not body:
+            return
         try:
-            self._icon.notify(message, title)
+            self._icon.notify(body, title)
         except Exception:
             # 部分 Windows 設定下（例如關閉通知）會丟例外，不該影響主流程
             pass

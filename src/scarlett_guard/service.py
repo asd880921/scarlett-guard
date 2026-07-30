@@ -155,7 +155,8 @@ class GuardService:
     def switch_driver_mode(self, mode: str, source: str = "manual") -> dict[str, Any]:
         """切換驅動模式。"""
         if not self._action_lock.acquire(blocking=False):
-            return {"ok": False, "message": t("mode.busy"), "detail": "", "blocked": True}
+            return {"ok": False, "message": t("mode.busy"),
+                    "detail": t("mode.busy.detail"), "blocked": True}
 
         try:
             self._busy = True
@@ -184,7 +185,8 @@ class GuardService:
     def repair_driver_binding(self) -> dict[str, Any]:
         """救回卡在「沒有驅動」或「音訊路徑沒起來」狀態的裝置。"""
         if not self._action_lock.acquire(blocking=False):
-            return {"ok": False, "message": t("mode.busy"), "detail": "", "blocked": True}
+            return {"ok": False, "message": t("mode.busy"),
+                    "detail": t("mode.busy.detail"), "blocked": True}
         try:
             self._busy = True
             self._emit("busy", {"busy": True, "source": "mode:repair"})
@@ -250,7 +252,8 @@ class GuardService:
             }
 
         if not self._action_lock.acquire(blocking=False):
-            return {"ok": False, "message": t("dev.busy"), "detail": "", "blocked": True}
+            return {"ok": False, "message": t("dev.busy"),
+                    "detail": t("dev.busy.detail"), "blocked": True}
 
         try:
             self._busy = True

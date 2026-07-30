@@ -700,6 +700,10 @@
           if (state.driverMode) renderDriverMode(state.driverMode);
           renderResetButton();
           break;
+        case 'toast':
+          // 後端主動要求顯示的提示（例如從系統匣點到此刻不適用的動作）
+          toast(payload.title || '', payload.body || '', payload.tone || 'info', 6000);
+          break;
         case 'history':
           refreshHistory();
           break;

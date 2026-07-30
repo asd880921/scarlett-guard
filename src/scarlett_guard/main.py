@@ -115,14 +115,19 @@ class Application:
         self._notify_if_blocked(self.service.switch_driver_mode(mode, "tray"))
 
     def _notify_if_blocked(self, result: dict[str, Any]) -> None:
-        if self.tray is None or result.get("ok"):
-            return
-        if not result.get("blocked") and result.get("message"):
+        if result.get("ok") or not result.get("blocked"):
             # 一般失敗已經由紀錄那條路徑通知過了，不要重複
             return
         message = str(result.get("message") or "")
-        if message:
-            self.tray.notify(message, str(result.get("detail") or "")[:200])
+        if not message:
+            return
+        detail = str(result.get("detail") or "")[:200]
+
+        # 兩條路都走：系統通知可能被 Windows 的通知設定關掉，
+        # 視窗開著時不該依賴它；而視窗收起來時又只剩它。
+        if self.tray is not None:
+            self.tray.notify(message, detail)
+        self._push("toast", {"tone": "warn", "title": message, "body": detail})
 
     def _sync_tray_title(self, mode_state: dict[str, Any] | None = None) -> None:
         """把目前的驅動模式寫進 tooltip。
