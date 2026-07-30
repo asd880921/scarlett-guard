@@ -17,6 +17,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# 同 check_ui.py：輸出被重導向時 Windows 會落回 ANSI 代碼頁，印中文會炸
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 

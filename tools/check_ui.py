@@ -22,6 +22,14 @@ import re
 import sys
 from pathlib import Path
 
+# 輸出被重導向時（CI、管線），Windows 上的 stdout 會落回系統的 ANSI 代碼頁，
+# 印中文就會 UnicodeEncodeError。這裡強制 UTF-8，讓腳本不必挑執行環境。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).resolve().parents[1]
 PKG = ROOT / "src" / "scarlett_guard"
 UI = PKG / "ui"
