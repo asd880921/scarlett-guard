@@ -48,19 +48,35 @@ _COLORS = {
 }
 
 
-def _make_icon(state: str) -> Image.Image:
-    """畫一個帶狀態小圓點的圓角方塊。"""
-    size = 64
+def _make_icon(state: str, size: int = 64) -> Image.Image:
+    """畫一個帶狀態小圓點的圓角方塊。
+
+    座標全部按 size 等比換算，所以每個尺寸都是**原生繪製**的。
+    先畫小張再放大會糊掉 —— 這在 README 裡放大顯示時特別明顯。
+    """
+    k = size / 64.0
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
-    draw.rounded_rectangle((4, 4, size - 4, size - 4), radius=14, fill=(28, 28, 30, 255))
+    draw.rounded_rectangle(
+        (4 * k, 4 * k, size - 4 * k, size - 4 * k),
+        radius=14 * k,
+        fill=(28, 28, 30, 255),
+    )
     # 一個代表訊號的正弦狀折線
     points = [(16, 40), (24, 24), (32, 44), (40, 22), (48, 36)]
-    draw.line(points, fill=(235, 235, 245, 235), width=4, joint="curve")
+    draw.line(
+        [(x * k, y * k) for x, y in points],
+        fill=(235, 235, 245, 235),
+        width=max(1, round(4 * k)),
+        joint="curve",
+    )
 
     colour = _COLORS.get(state, _COLORS["idle"])
-    draw.ellipse((size - 26, size - 26, size - 6, size - 6), fill=(*colour, 255))
+    draw.ellipse(
+        (size - 26 * k, size - 26 * k, size - 6 * k, size - 6 * k),
+        fill=(*colour, 255),
+    )
     return image
 
 
