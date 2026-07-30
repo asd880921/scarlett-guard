@@ -15,6 +15,13 @@ DEFAULTS: dict[str, Any] = {
     # --- 裝置 ---
     # 空字串代表「自動偵測」（抓第一個 Focusrite VID_1235 裝置）
     "device_instance_id": "",
+    # --- 驅動模式切換 ---
+    # 空字串 = 自動從 driver store 找 focusritecustom.inf。
+    # 只有在自動偵測失敗時才需要手動指定。
+    "focusrite_inf_path": "",
+    # 切換後等裝置安定的秒數。切換牽動整條 USB 裝置樹的重新列舉，
+    # 比單純 restart-device 更久，所以預設比 post_reset_settle_seconds 保守。
+    "mode_settle_seconds": 2.0,
     # --- 熱鍵 ---
     "hotkey_enabled": True,
     "hotkey": "<ctrl>+<alt>+r",

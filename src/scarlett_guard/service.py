@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from . import autostart, device, hotkey, i18n, monitor
+from . import autostart, device, driver_mode, hotkey, i18n, monitor
 from .i18n import t
 from .config import Config
 from .history import History
@@ -30,6 +30,8 @@ class GuardService:
         self._last_auto_reset_at = 0.0
         self._cached_snapshot: dict[str, Any] = {}
         self._snapshot_at = 0.0
+        self._cached_mode: dict[str, Any] = {}
+        self._mode_at = 0.0
 
         self.monitor = monitor.AudioMonitor(
             self.config,
@@ -82,6 +84,111 @@ class GuardService:
 
     def invalidate_snapshot(self) -> None:
         self._snapshot_at = 0.0
+        self._mode_at = 0.0
+
+    # ------------------------------------------------------------------
+    # 驅動模式
+    # ------------------------------------------------------------------
+    def driver_mode(self, force: bool = False) -> dict[str, Any]:
+        """目前的驅動模式與判斷依據。和 snapshot 一樣做快取，PowerShell 很慢。"""
+        now = time.monotonic()
+        if not force and self._cached_mode and now - self._mode_at < 3.0:
+            return self._cached_mode
+        state = driver_mode.probe()
+        state["busy"] = self._busy
+        state["focusrite_inf"] = str(
+            driver_mode.find_focusrite_inf(self.config.get("focusrite_inf_path")) or ""
+        )
+        state["elevated"] = device.is_elevated()
+        self._cached_mode = state
+        self._mode_at = now
+        return state
+
+    def switch_driver_mode(self, mode: str, source: str = "manual") -> dict[str, Any]:
+        """切換驅動模式。
+
+        和 reset() 共用同一把鎖 —— 兩者都會讓裝置重新列舉，
+        同時進行必然互踩，而且會讓監聽的重啟邏輯錯亂。
+        """
+        if not self._reset_lock.acquire(blocking=False):
+            return {"ok": False, "message": t("mode.busy"), "detail": ""}
+
+        try:
+            self._busy = True
+            self._emit("busy", {"busy": True, "source": f"mode:{source}"})
+
+            # 切換過程中裝置會消失再出現，監聽一定會誤判成 stall
+            was_monitoring = self.monitor.running
+            if was_monitoring:
+                self.monitor.pause()
+
+            result = driver_mode.switch_mode(
+                mode,
+                focusrite_inf_override=self.config.get("focusrite_inf_path") or "",
+                settle_seconds=float(self.config.get("mode_settle_seconds", 2.0)),
+            )
+
+            if was_monitoring:
+                # 換驅動後裝置索引與端點名稱都會變，串流必須整個重開。
+                # 錄音模式下 Focusrite 端點名稱不同，監聽可能開不起來 ——
+                # 那不是錯誤，只要讓使用者知道就好。
+                self.monitor.stop()
+                ok, message = self.monitor.start()
+                if not ok:
+                    result.detail = (
+                        result.detail + "\n" + t("mon.restartfail", message=message)
+                    ).strip()
+
+            self.invalidate_snapshot()
+            self._log_mode_switch(source, mode, result)
+            return result.to_dict()
+        finally:
+            self._busy = False
+            self._emit("busy", {"busy": False, "source": f"mode:{source}"})
+            self._emit("device", self.snapshot(force=True))
+            self._emit("driver_mode", self.driver_mode(force=True))
+            self._reset_lock.release()
+
+    def repair_driver_binding(self) -> dict[str, Any]:
+        """救回卡在「沒有驅動」狀態的裝置。"""
+        if not self._reset_lock.acquire(blocking=False):
+            return {"ok": False, "message": t("mode.busy"), "detail": ""}
+        try:
+            self._busy = True
+            self._emit("busy", {"busy": True, "source": "mode:repair"})
+            was_monitoring = self.monitor.running
+            if was_monitoring:
+                self.monitor.pause()
+
+            result = driver_mode.repair()
+
+            if was_monitoring:
+                self.monitor.stop()
+                self.monitor.start()
+
+            self.invalidate_snapshot()
+            self._log_mode_switch("repair", result.extra.get("mode", ""), result)
+            return result.to_dict()
+        finally:
+            self._busy = False
+            self._emit("busy", {"busy": False, "source": "mode:repair"})
+            self._emit("device", self.snapshot(force=True))
+            self._emit("driver_mode", self.driver_mode(force=True))
+            self._reset_lock.release()
+
+    def _log_mode_switch(
+        self, source: str, requested: str, result: device.ActionResult
+    ) -> None:
+        record = self.history.log(
+            f"mode_{source}",
+            ok=result.ok,
+            requested=requested,
+            resulting=result.extra.get("mode", ""),
+            message=result.message,
+            detail=result.detail[:500],
+            duration_ms=result.duration_ms,
+        )
+        self._emit("history", record)
 
     # ------------------------------------------------------------------
     # 重置 —— 整個程式的核心動作

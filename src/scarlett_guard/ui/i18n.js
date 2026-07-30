@@ -11,6 +11,7 @@ window.I18N = (() => {
       'app.title': 'Scarlett Guard',
 
       'nav.status': '狀態',
+      'nav.mode': '驅動模式',
       'nav.detect': '自動偵測',
       'nav.settings': '設定',
       'nav.history': '紀錄',
@@ -18,6 +19,8 @@ window.I18N = (() => {
 
       'view.status.title': '狀態',
       'view.status.sub': 'Focusrite 裝置的即時狀況與一鍵重置',
+      'view.mode.title': '驅動模式',
+      'view.mode.sub': '依情境在穩定與低延遲之間切換',
       'view.detect.title': '自動偵測',
       'view.detect.sub': '監聽音訊串流，異常時自動復原',
       'view.settings.title': '設定',
@@ -214,6 +217,68 @@ window.I18N = (() => {
       'toast.bootfail': '初始化失敗',
       'toast.bridge': '橋接尚未就緒：{method}',
 
+      // --- 驅動模式 ---
+      'mode.switch.aria': '驅動模式',
+      'mode.daily.name': '日常模式',
+      'mode.daily.for': '聽音樂、看影片、遊戲',
+      'mode.daily.trade': 'Windows 內建驅動 · 穩定 · 全雙工約 46 ms',
+      'mode.asio.name': '錄音模式',
+      'mode.asio.for': '練琴、錄音、軟體監聽',
+      'mode.asio.trade': '原廠驅動 + ASIO · 低延遲 · 可能需要重置',
+      'mode.detecting': '正在讀取驅動綁定…',
+      'mode.hint':
+        '切換會讓裝置重新列舉，音訊中斷約 <strong>10 秒</strong>，' +
+        '正在錄音或播放的程式需要重新選擇裝置。切換完全可逆，兩個驅動都留在系統裡。',
+      'mode.status.ok': '目前是{mode}，裝置運作正常',
+      'mode.status.switching': '正在切換到{mode}，請稍候…',
+      'mode.status.noadmin': '需要系統管理員權限才能切換驅動綁定',
+      'mode.status.nodevice': '找不到 Focusrite 裝置，請確認 USB 已連接',
+      'mode.status.unhealthy': '裝置狀態異常（問題碼 {problem}）',
+      'mode.status.unknown': '無法判定模式：裝置綁在「{service}」上',
+      'mode.status.incomplete': '{mode}的驅動已換綁，但音訊路徑沒有起來 —— 目前實際上沒有可用裝置',
+
+      'mode.kv.complete': '音訊路徑',
+      'mode.complete.yes': '已就緒，可以使用',
+      'mode.complete.no': '未就緒 —— 舊的音訊堆疊沒被拆掉',
+      'mode.kv.adapter': 'Focusrite 音訊節點',
+
+      'mode.evidence': '判斷依據',
+      'mode.evidence.hint': '模式不是猜的，而是從裝置實際綁定的服務推出來的。以下是原始數據。',
+      'mode.verdict.unknown': '無法判定',
+      'mode.kv.parent': '母節點服務',
+      'mode.kv.audio': '音訊介面服務',
+      'mode.kv.inf': '綁定的 INF',
+      'mode.kv.status': '狀態 / 問題碼',
+      'mode.kv.endpoints': '在線的音訊端點',
+      'mode.kv.hwid': 'Hardware ID',
+      'mode.kv.focusriteinf': '原廠驅動 INF',
+      'mode.kv.focusriteinf.none': '找不到（無法切換到錄音模式）',
+
+      'mode.why': '為什麼要分兩種模式',
+      'mode.why.body':
+        '原廠驅動在音訊串流丟包後<strong>不會重新同步</strong>，會卡在持續電流音或直接沒聲音的狀態。' +
+        'Windows 內建的 UAC2 類別驅動沒有這個問題，但它沒有原生 ASIO，' +
+        '全雙工延遲被音訊引擎鎖在約 46 ms。<br><br>' +
+        '而失效幾乎只發生在<strong>日常使用</strong>——大量程式反覆開關音訊串流、切換取樣率；' +
+        'DAW 工作時反而穩定，因為那是單一串流、固定取樣率、一路持有到結束。' +
+        '所以按情境切換，能同時拿到兩邊的好處。',
+
+      'mode.broken.title': '裝置目前沒有可用的驅動',
+      'mode.broken.body': '這通常代表切換到一半失敗了。',
+      'mode.broken.body.detail':
+        '裝置綁在「{service}」上，問題碼 {problem}。' +
+        '如果 Windows 現在完全找不到音訊裝置，按右邊的按鈕即可救回。',
+      'mode.broken.action': '修復裝置綁定',
+
+      'toast.mode.start': '正在切換到{mode}',
+      'toast.mode.start.sub': '裝置重新列舉中，音訊會中斷約 10 秒',
+      'toast.mode.ok': '已切換到{mode}',
+      'toast.mode.fail': '切換失敗',
+      'toast.mode.repaired': '裝置綁定已修復',
+      'toast.mode.repair.fail': '修復失敗',
+
+      'ev.mode_manual': '切換驅動模式',
+      'ev.mode_repair': '修復裝置綁定',
       'ev.reset_manual': '手動重置',
       'ev.reset_hotkey': '熱鍵重置',
       'ev.reset_tray': '系統匣重置',
@@ -230,6 +295,7 @@ window.I18N = (() => {
       'app.title': 'Scarlett Guard',
 
       'nav.status': '状态',
+      'nav.mode': '驱动模式',
       'nav.detect': '自动检测',
       'nav.settings': '设置',
       'nav.history': '记录',
@@ -237,6 +303,8 @@ window.I18N = (() => {
 
       'view.status.title': '状态',
       'view.status.sub': 'Focusrite 设备的实时状况与一键重置',
+      'view.mode.title': '驱动模式',
+      'view.mode.sub': '按场景在稳定与低延迟之间切换',
       'view.detect.title': '自动检测',
       'view.detect.sub': '监听音频流，异常时自动恢复',
       'view.settings.title': '设置',
@@ -432,6 +500,67 @@ window.I18N = (() => {
       'toast.bootfail': '初始化失败',
       'toast.bridge': '桥接尚未就绪：{method}',
 
+      'mode.switch.aria': '驱动模式',
+      'mode.daily.name': '日常模式',
+      'mode.daily.for': '听音乐、看视频、游戏',
+      'mode.daily.trade': 'Windows 内置驱动 · 稳定 · 全双工约 46 ms',
+      'mode.asio.name': '录音模式',
+      'mode.asio.for': '练琴、录音、软件监听',
+      'mode.asio.trade': '原厂驱动 + ASIO · 低延迟 · 可能需要重置',
+      'mode.detecting': '正在读取驱动绑定…',
+      'mode.hint':
+        '切换会让设备重新枚举，音频中断约 <strong>10 秒</strong>，' +
+        '正在录音或播放的程序需要重新选择设备。切换完全可逆，两个驱动都留在系统里。',
+      'mode.status.ok': '当前是{mode}，设备运行正常',
+      'mode.status.switching': '正在切换到{mode}，请稍候…',
+      'mode.status.noadmin': '需要管理员权限才能切换驱动绑定',
+      'mode.status.nodevice': '找不到 Focusrite 设备，请确认 USB 已连接',
+      'mode.status.unhealthy': '设备状态异常（问题码 {problem}）',
+      'mode.status.unknown': '无法判定模式：设备绑在“{service}”上',
+      'mode.status.incomplete': '{mode}的驱动已换绑，但音频路径没有起来 —— 当前实际上没有可用设备',
+
+      'mode.kv.complete': '音频路径',
+      'mode.complete.yes': '已就绪，可以使用',
+      'mode.complete.no': '未就绪 —— 旧的音频堆栈没被拆掉',
+      'mode.kv.adapter': 'Focusrite 音频节点',
+
+      'mode.evidence': '判断依据',
+      'mode.evidence.hint': '模式不是猜的，而是从设备实际绑定的服务推出来的。以下是原始数据。',
+      'mode.verdict.unknown': '无法判定',
+      'mode.kv.parent': '母节点服务',
+      'mode.kv.audio': '音频接口服务',
+      'mode.kv.inf': '绑定的 INF',
+      'mode.kv.status': '状态 / 问题码',
+      'mode.kv.endpoints': '在线的音频端点',
+      'mode.kv.hwid': 'Hardware ID',
+      'mode.kv.focusriteinf': '原厂驱动 INF',
+      'mode.kv.focusriteinf.none': '找不到（无法切换到录音模式）',
+
+      'mode.why': '为什么要分两种模式',
+      'mode.why.body':
+        '原厂驱动在音频流丢包后<strong>不会重新同步</strong>，会卡在持续电流声或直接没声音的状态。' +
+        'Windows 内置的 UAC2 类驱动没有这个问题，但它没有原生 ASIO，' +
+        '全双工延迟被音频引擎锁在约 46 ms。<br><br>' +
+        '而失效几乎只发生在<strong>日常使用</strong>——大量程序反复开关音频流、切换采样率；' +
+        'DAW 工作时反而稳定，因为那是单一流、固定采样率、一路持有到结束。' +
+        '所以按场景切换，能同时拿到两边的好处。',
+
+      'mode.broken.title': '设备当前没有可用的驱动',
+      'mode.broken.body': '这通常代表切换到一半失败了。',
+      'mode.broken.body.detail':
+        '设备绑在“{service}”上，问题码 {problem}。' +
+        '如果 Windows 现在完全找不到音频设备，按右边的按钮即可救回。',
+      'mode.broken.action': '修复设备绑定',
+
+      'toast.mode.start': '正在切换到{mode}',
+      'toast.mode.start.sub': '设备重新枚举中，音频会中断约 10 秒',
+      'toast.mode.ok': '已切换到{mode}',
+      'toast.mode.fail': '切换失败',
+      'toast.mode.repaired': '设备绑定已修复',
+      'toast.mode.repair.fail': '修复失败',
+
+      'ev.mode_manual': '切换驱动模式',
+      'ev.mode_repair': '修复设备绑定',
       'ev.reset_manual': '手动重置',
       'ev.reset_hotkey': '热键重置',
       'ev.reset_tray': '托盘重置',
@@ -448,6 +577,7 @@ window.I18N = (() => {
       'app.title': 'Scarlett Guard',
 
       'nav.status': 'Status',
+      'nav.mode': 'Driver mode',
       'nav.detect': 'Detection',
       'nav.settings': 'Settings',
       'nav.history': 'History',
@@ -455,6 +585,8 @@ window.I18N = (() => {
 
       'view.status.title': 'Status',
       'view.status.sub': 'Live device state and one-click reset',
+      'view.mode.title': 'Driver mode',
+      'view.mode.sub': 'Trade stability for latency, per situation',
       'view.detect.title': 'Detection',
       'view.detect.sub': 'Watch the audio stream and recover automatically',
       'view.settings.title': 'Settings',
@@ -658,6 +790,72 @@ window.I18N = (() => {
       'toast.bootfail': 'Initialisation failed',
       'toast.bridge': 'Bridge not ready: {method}',
 
+      'mode.switch.aria': 'Driver mode',
+      'mode.daily.name': 'Everyday',
+      'mode.daily.for': 'Music, video, games',
+      'mode.daily.trade': 'Built-in driver · stable · ~46 ms full duplex',
+      'mode.asio.name': 'Studio',
+      'mode.asio.for': 'Practice, tracking, software monitoring',
+      'mode.asio.trade': 'Focusrite driver + ASIO · low latency · may need resets',
+      'mode.detecting': 'Reading driver binding…',
+      'mode.hint':
+        'Switching re-enumerates the device, so audio drops for about <strong>10 seconds</strong> ' +
+        'and anything currently playing or recording will need to pick the device again. ' +
+        'The switch is fully reversible — both drivers stay installed.',
+      'mode.status.ok': 'In {mode} — device is healthy',
+      'mode.status.switching': 'Switching to {mode}…',
+      'mode.status.noadmin': 'Administrator rights are required to rebind the driver',
+      'mode.status.nodevice': 'No Focusrite device found — check the USB connection',
+      'mode.status.unhealthy': 'Device is unhealthy (problem code {problem})',
+      'mode.status.unknown': 'Cannot determine the mode: the device is bound to “{service}”',
+      'mode.status.incomplete':
+        'The driver for {mode} is bound, but the audio path never came up — there is no usable device right now',
+
+      'mode.kv.complete': 'Audio path',
+      'mode.complete.yes': 'Ready to use',
+      'mode.complete.no': 'Not ready — the old audio stack was never torn down',
+      'mode.kv.adapter': 'Focusrite audio node',
+
+      'mode.evidence': 'Evidence',
+      'mode.evidence.hint':
+        'The mode is not guessed — it is derived from the service the device is actually bound to. Raw data below.',
+      'mode.verdict.unknown': 'Undetermined',
+      'mode.kv.parent': 'Parent service',
+      'mode.kv.audio': 'Audio interface service',
+      'mode.kv.inf': 'Bound INF',
+      'mode.kv.status': 'Status / problem code',
+      'mode.kv.endpoints': 'Live audio endpoints',
+      'mode.kv.hwid': 'Hardware ID',
+      'mode.kv.focusriteinf': 'Focusrite INF',
+      'mode.kv.focusriteinf.none': 'Not found — Studio mode unavailable',
+
+      'mode.why': 'Why two modes',
+      'mode.why.body':
+        'The Focusrite driver <strong>does not resynchronise</strong> after a dropped audio packet — ' +
+        'it gets stuck emitting static, or goes silent. Windows’ built-in UAC2 class driver ' +
+        'does not have that flaw, but it offers no native ASIO, so the audio engine pins ' +
+        'full-duplex latency at roughly 46 ms.<br><br>' +
+        'In practice the failures happen almost exclusively during <strong>everyday use</strong>, ' +
+        'where many apps repeatedly open and close streams and change sample rates. DAW sessions ' +
+        'are comparatively stable: one stream, one sample rate, held open from start to finish. ' +
+        'Switching per situation gets you both halves.',
+
+      'mode.broken.title': 'The device has no working driver',
+      'mode.broken.body': 'This usually means a switch failed halfway through.',
+      'mode.broken.body.detail':
+        'The device is bound to “{service}” with problem code {problem}. ' +
+        'If Windows currently shows no audio devices at all, the button on the right will recover it.',
+      'mode.broken.action': 'Repair device binding',
+
+      'toast.mode.start': 'Switching to {mode}',
+      'toast.mode.start.sub': 'Re-enumerating the device — audio drops for about 10 seconds',
+      'toast.mode.ok': 'Switched to {mode}',
+      'toast.mode.fail': 'Switch failed',
+      'toast.mode.repaired': 'Device binding repaired',
+      'toast.mode.repair.fail': 'Repair failed',
+
+      'ev.mode_manual': 'Driver mode switch',
+      'ev.mode_repair': 'Device binding repair',
       'ev.reset_manual': 'Manual reset',
       'ev.reset_hotkey': 'Hotkey reset',
       'ev.reset_tray': 'Tray reset',

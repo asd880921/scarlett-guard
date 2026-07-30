@@ -56,6 +56,10 @@ class Application:
             on_toggle_monitor=self._toggle_monitor,
             on_quit=self.quit,
             monitor_enabled=lambda: bool(self.service.config.get("monitor_enabled")),
+            on_switch_mode=lambda mode: self.service.switch_driver_mode(mode, "tray"),
+            # 用快取的探測結果 —— 選單每次開啟都會呼叫 checked，
+            # 在那裡跑 PowerShell 會讓選單卡好幾秒才展開
+            current_mode=lambda: str(self.service.driver_mode().get("mode", "")),
         )
         self.tray.start()
 
@@ -150,6 +154,12 @@ class Application:
                         if ok
                         else t("tray.reset.fail", message=payload.get("message", "")),
                     )
+            elif event.startswith("mode_"):
+                # 從系統匣切換時視窗可能是關著的，通知是唯一的結果回饋 ——
+                # 而且切換失敗可能讓系統完全沒有音訊裝置，一定要說出來
+                ok = bool(payload.get("ok"))
+                self.tray.set_state("ok" if ok else "error")
+                self.tray.notify(t("tray.title"), str(payload.get("message", "")))
 
     def _push(self, channel: str, payload: dict[str, Any]) -> None:
         if not self._ui_ready.is_set() or self.window is None:
@@ -181,6 +191,11 @@ class Application:
                 if tick % 50 == 0:
                     self._push("device", self.service.snapshot())
                     self._push("stats", self.service.history.stats())
+                # 驅動模式幾乎不會自己改變，所以查得比裝置狀態更疏。
+                # 但一定要定期查：系統匣選單的勾號讀的是這份快取，
+                # 沒有人先把它熱起來的話，第一次展開選單會卡兩三秒。
+                if tick % 300 == 0:
+                    self._push("driver_mode", self.service.driver_mode())
             except Exception:
                 continue
 

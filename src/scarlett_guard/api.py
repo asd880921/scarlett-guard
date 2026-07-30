@@ -94,6 +94,11 @@ class Api:
         return {"ok": True, "device": self._service.snapshot(force=force)}
 
     @_safe
+    def driver_mode(self, force: bool = False) -> dict[str, Any]:
+        """目前的驅動模式。和 device_status 一樣需要跑 PowerShell，所以不放進 bootstrap。"""
+        return {"ok": True, "driver_mode": self._service.driver_mode(force=force)}
+
+    @_safe
     def monitor_status(self) -> dict[str, Any]:
         return {"ok": True, "monitor": self._service.monitor_state()}
 
@@ -111,6 +116,14 @@ class Api:
     @_safe
     def reset(self, source: str = "manual") -> dict[str, Any]:
         return self._service.reset(source or "manual")
+
+    @_safe
+    def switch_driver_mode(self, mode: str) -> dict[str, Any]:
+        return self._service.switch_driver_mode(str(mode or ""), "manual")
+
+    @_safe
+    def repair_driver_binding(self) -> dict[str, Any]:
+        return self._service.repair_driver_binding()
 
     @_safe
     def set_monitor_enabled(self, enabled: bool) -> dict[str, Any]:

@@ -54,12 +54,16 @@ class Tray:
         on_toggle_monitor: Callable[[bool], None],
         on_quit: Callable[[], None],
         monitor_enabled: Callable[[], bool],
+        on_switch_mode: Callable[[str], None] | None = None,
+        current_mode: Callable[[], str] | None = None,
     ) -> None:
         self._on_reset = on_reset
         self._on_show = on_show
         self._on_toggle_monitor = on_toggle_monitor
         self._on_quit = on_quit
         self._monitor_enabled = monitor_enabled
+        self._on_switch_mode = on_switch_mode
+        self._current_mode = current_mode
         self._icon = None
         self._thread: threading.Thread | None = None
         self._state = "ok"
@@ -83,6 +87,9 @@ class Tray:
                 self._toggle_monitor,
                 checked=lambda _: self._monitor_enabled(),
             ),
+            # 驅動模式做成子選單而不是攤平在第一層：切換要十幾秒且會中斷音訊，
+            # 多一層可以避免和「立即重置」擠在一起被誤點。
+            pystray.MenuItem(t("tray.mode"), self._mode_menu()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(t("tray.quit"), self._quit),
         )
@@ -127,6 +134,25 @@ class Tray:
 
     def _toggle_monitor(self, *_args) -> None:
         self._on_toggle_monitor(not self._monitor_enabled())
+
+    def _mode_menu(self):
+        """驅動模式子選單。勾號反映目前實際綁定的驅動。"""
+        def item(mode: str, label_key: str):
+            return pystray.MenuItem(
+                t(label_key),
+                lambda *_a: self._switch_mode(mode),
+                checked=lambda _i, m=mode: (self._current_mode or (lambda: ""))() == m,
+                radio=True,
+            )
+
+        return pystray.Menu(item("daily", "mode.daily"), item("asio", "mode.asio"))
+
+    def _switch_mode(self, mode: str) -> None:
+        if self._on_switch_mode is None:
+            return
+        # 切換是阻塞式的（十幾秒），絕不能在 pystray 的選單執行緒上跑，
+        # 否則整個系統匣選單會凍住
+        threading.Thread(target=self._on_switch_mode, args=(mode,), daemon=True).start()
 
     def _quit(self, *_args) -> None:
         self._on_quit()

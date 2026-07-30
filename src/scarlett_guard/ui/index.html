@@ -27,6 +27,9 @@
         <button class="nav-item is-active" data-view="status">
           <span class="nav-glyph">◎</span><span data-i18n="nav.status">狀態</span>
         </button>
+        <button class="nav-item" data-view="mode">
+          <span class="nav-glyph">⇄</span><span data-i18n="nav.mode">驅動模式</span>
+        </button>
         <button class="nav-item" data-view="detect">
           <span class="nav-glyph">∿</span><span data-i18n="nav.detect">自動偵測</span>
         </button>
@@ -135,6 +138,59 @@
                 </div>
                 <dl class="kv" id="driver-kv"></dl>
                 <p class="hint" id="driver-hint"></p>
+              </div>
+            </section>
+
+            <!-- ============ 驅動模式 ============ -->
+            <section class="view" data-view="mode">
+              <!-- 裝置沒有驅動時，這是唯一的出路，所以放在最上面 -->
+              <div class="banner banner-warn" id="mode-broken-banner" hidden>
+                <div class="banner-body">
+                  <strong data-i18n="mode.broken.title"></strong>
+                  <span id="mode-broken-detail" data-i18n="mode.broken.body"></span>
+                </div>
+                <button class="btn btn-primary btn-sm" id="btn-repair-mode"
+                        data-i18n="mode.broken.action"></button>
+              </div>
+
+              <div class="card modecard">
+                <!-- 選取指示器是共用的一片，會在兩段之間滑動 ——
+                     位置本身就是狀態，不需要額外的勾選符號 -->
+                <div class="modeswitch" id="modeswitch" role="radiogroup"
+                     data-i18n-aria="mode.switch.aria">
+                  <span class="modeswitch-indicator" id="modeswitch-indicator" aria-hidden="true"></span>
+
+                  <button class="mode-option" data-mode="daily" role="radio" aria-checked="false">
+                    <span class="mode-glyph" aria-hidden="true">🛡</span>
+                    <span class="mode-name" data-i18n="mode.daily.name"></span>
+                    <span class="mode-for" data-i18n="mode.daily.for"></span>
+                    <span class="mode-trade" data-i18n="mode.daily.trade"></span>
+                  </button>
+
+                  <button class="mode-option" data-mode="asio" role="radio" aria-checked="false">
+                    <span class="mode-glyph" aria-hidden="true">🎛</span>
+                    <span class="mode-name" data-i18n="mode.asio.name"></span>
+                    <span class="mode-for" data-i18n="mode.asio.for"></span>
+                    <span class="mode-trade" data-i18n="mode.asio.trade"></span>
+                  </button>
+                </div>
+
+                <p class="mode-status" id="mode-status" data-i18n="mode.detecting"></p>
+                <p class="hint" data-i18n-html="mode.hint"></p>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <h3 data-i18n="mode.evidence"></h3>
+                  <span class="card-note" id="mode-verdict">—</span>
+                </div>
+                <p class="hint subtle" data-i18n="mode.evidence.hint"></p>
+                <dl class="kv" id="mode-kv"></dl>
+              </div>
+
+              <div class="card">
+                <div class="card-head"><h3 data-i18n="mode.why"></h3></div>
+                <p class="hint" data-i18n-html="mode.why.body"></p>
               </div>
             </section>
 

@@ -82,6 +82,111 @@ device or restart its stream — exactly as if you had unplugged the USB cable.
 
 ---
 
+## Driver mode: switch to fit what you're doing
+
+The Focusrite driver and Windows' built-in UAC2 class driver each have something the
+other can't offer — and their weaknesses happen to fall in different situations.
+The **Driver mode** page switches between them in one click.
+
+| Mode | Bound driver | Good for | Cost |
+|---|---|---|---|
+| **Everyday** | Built-in `usbaudio2` | Music, video, games | No native ASIO; ~46 ms full-duplex latency |
+| **Studio** | Focusrite driver + ASIO | Practice, tracking, software monitoring | Doesn't resync after a dropped packet, so it may need resets |
+
+**Why splitting them helps:** in practice the failures happen almost exclusively during
+*everyday* use, where many apps repeatedly open and close audio streams and change sample
+rates. DAW sessions are comparatively stable — one stream, one sample rate, held open from
+start to finish. Switching per situation gets you both halves.
+
+**The switch is fully reversible and both drivers stay installed** — nothing has to be
+reinstalled. The tray menu offers the same switch without opening the window. Audio drops
+during a switch, and anything currently playing or recording will need to pick the device
+again. Measured on one machine over four consecutive round trips:
+
+| Direction | Time | Audio engine paused |
+|---|---|---|
+| Studio → Everyday | ~12 s | No |
+| Everyday → Studio | ~17 s | Yes |
+
+### Why one direction is slower (and why it used to need a reboot)
+
+The two modes have differently shaped device trees, and that difference explains everything:
+
+```
+Everyday                                Studio
+USB\VID_xxxx&PID_xxxx → usbccgp         USB\VID_xxxx&PID_xxxx → FocusriteUsb
+  └ &MI_00 → usbaudio2  ← audio here    ROOT\FOCUSRITEUSBNEW → FocusriteUsbSwRoot
+                                          └ FOCUSRITEUSB\AUDIO&ADAPTER → audio here
+```
+
+**In Everyday mode the audio function is a descendant of the USB device; in Studio mode it
+hangs off a separate software root.**
+
+- **Studio → Everyday:** tearing down the USB side just turns the Focusrite audio node into
+  a phantom. No handles block it, so it completes immediately.
+- **Everyday → Studio:** the `MI_00` child has to go first, but the audio endpoints it owns
+  are held open by `AudioEndpointBuilder`. While those handles are open the stack can't be
+  removed, so PnP defers the driver swap to the next boot. **That is the real cause of
+  "the switch needs a reboot to take effect."**
+
+The fix is to release those handles first: stop `Audiosrv` and `AudioEndpointBuilder`,
+disable the device (which tears down every child), rebind, re-enable, restore the services.
+The app predicts whether this is needed by checking for a live `usbaudio2` child, so it
+never pays the cost unnecessarily. Service restoration lives in a `finally` block and runs
+whether the rebind succeeded or not.
+
+### What gets verified is the audio path, not the driver binding
+
+These are two different things. There is a failure mode that is very easy to miss: **the
+parent rebinds to `FocusriteUsb` with a perfectly clean problem code, but the old
+`usbaudio2` child is still alive and the Focusrite audio node was never created** — the UI
+says "Switched to Studio" while not a single ASIO device exists.
+
+So the acceptance test is that the audio function actually came up: Studio mode requires an
+`AUDIO&ADAPTER` node **and** no live `usbaudio2` child; Everyday mode requires the
+`usbaudio2` child to be online. The first row of the Evidence panel, "Audio path", reports
+exactly that, and an unready state is reported as an error rather than a success.
+
+> Windows' rebind API returns `bRebootRequired`, and it **cannot be trusted** — across eight
+> consecutive round trips it took effect immediately every time while reporting that a reboot
+> was required every time. The app only believes `CM_PROB_NEED_RESTART` (Code 14), and when
+> that does appear it first tries to clear it with a software reset.
+
+### The verdict is auditable
+
+The mode isn't guessed. The page lists the service the device is actually bound to, the
+INF, the problem code, and the live audio endpoints:
+
+```
+Parent service          usbccgp        ← built-in USB composite (Everyday)
+Audio interface service usbaudio2      ← built-in UAC2 class driver
+Bound INF               usb.inf
+Live audio endpoints    Microphone (Scarlett Solo 4th Gen), Speakers (Scarlett Solo 4th Gen)
+```
+
+In Studio mode the parent service is `FocusriteUsb`, and the audio child interface is not
+enumerated at all — the Focusrite driver takes over enumeration of the whole composite device.
+
+### If a switch fails
+
+`pnputil` cannot do this: the built-in `usb.inf` is always outranked by the Focusrite
+driver, and [Microsoft's documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil-command-syntax)
+states plainly that PnPUtil will not force a driver that isn't the highest ranked one.
+So this uses `newdev.dll`'s `UpdateDriverForPlugAndPlayDevicesW` with `INSTALLFLAG_FORCE`.
+
+If a switch fails halfway, the device ends up with no driver — the symptom is that
+**Windows shows no audio output or input devices at all**. A **Repair device binding**
+button then appears at the top of the Driver mode page; it rescans PnP and forces the
+device back onto the built-in driver. That driver is in-box and cannot be missing, so this
+recovery path always works.
+
+> ⚠️ **Don't uninstall "Focusrite Audio Drivers".** That removes the driver package from the
+> driver store, and Studio mode becomes unavailable. Focusrite Control 2 and the driver
+> package are separate entries; in Everyday mode neither registers a service or a running
+> process, so leaving them installed costs nothing.
+
+---
+
 ## Automatic detection (advanced, off by default)
 
 Scarlett Guard can watch the interface's **capture input** continuously and reset for you
@@ -194,6 +299,7 @@ src/scarlett_guard/
   main.py                  Wires up service, tray and window
   service.py               Core service layer — UI and tray talk only to this
   device.py                PnP discovery, reset, phantom device removal
+  driver_mode.py           forced rebind between Focusrite and the class driver
   monitor.py               Audio anomaly detection
   hotkey.py                Global hotkey
   tray.py                  Tray icon

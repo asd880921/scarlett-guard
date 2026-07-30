@@ -19,6 +19,8 @@
   --surface-solid: #1c1c20;
   --surface-hi:    rgba(48, 48, 54, 0.68);
   --chrome:        rgba(18, 18, 22, 0.72);
+  /* 凹槽：刻意用「暗色疊加」而非淺色半透明，才不會和卡片的材質互相抵銷 */
+  --well:          rgba(0, 0, 0, 0.26);
 
   --text:          #f2f2f7;
   --text-2:        rgba(235, 235, 245, 0.62);
@@ -57,6 +59,7 @@
     --surface-solid: #ffffff;
     --surface-hi:    rgba(255, 255, 255, 0.9);
     --chrome:        rgba(246, 246, 250, 0.74);
+    --well:          rgba(0, 0, 0, 0.055);
 
     --text:   #1c1c1e;
     --text-2: rgba(60, 60, 67, 0.62);
@@ -441,6 +444,97 @@ body::before {
 .stat-value small { font-size: 13px; font-weight: 500; color: var(--text-2); letter-spacing: 0; }
 .stat-foot { font-size: 11.5px; color: var(--text-3); }
 
+/* ---------------------------------------------------------------- 驅動模式 */
+/* 分段控制：選取指示器是共用的一片，會在兩段之間滑動。
+   位置本身就是狀態，所以不需要勾選符號 —— 而且滑動的路徑讓「從哪裡換到哪裡」
+   一眼可見，這是兩顆各自獨立的按鈕做不到的。 */
+.modeswitch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 5px;
+  border-radius: calc(var(--radius) + 4px);
+  /* 凹槽用低透明度的「暗色」而不是淺色半透明 ——
+     淺色半透明疊在同樣淺色半透明的卡片上會讓層次完全崩掉 */
+  background: var(--well);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.modeswitch-indicator {
+  position: absolute;
+  top: 5px; left: 5px; bottom: 5px;
+  width: calc(50% - 5px);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  /* 大面積的材質要讀起來更「厚」：更深的陰影 + 上緣的亮邊（材質接到光） */
+  box-shadow: var(--shadow-card);
+  border-top: 1px solid var(--line-hi);
+  transition: transform var(--spring), opacity var(--spring-fast);
+  will-change: transform;
+}
+.modeswitch[data-selected="asio"] .modeswitch-indicator { transform: translateX(100%); }
+
+/* 切換進行中：指示器已經到位（立即回應），但明確標示為「尚未確認」 */
+.modeswitch.is-pending .modeswitch-indicator {
+  opacity: 0.55;
+  border-top-color: var(--accent);
+  box-shadow: var(--shadow-card), inset 0 0 0 1.5px var(--accent);
+}
+
+.mode-option {
+  position: relative;
+  z-index: 1;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 14px 16px 15px;
+  border: 0; background: none;
+  font: inherit; text-align: left; color: var(--text-2);
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: color var(--spring-fast), transform var(--press);
+}
+/* 回饋在按下的當下發生，不等 click —— 切換本身要花十幾秒，
+   如果連按下的瞬間都沒有反應，整個操作會讀起來像沒接上 */
+.mode-option:active { transform: scale(0.985); }
+.mode-option[aria-checked="true"] { color: var(--text); }
+.mode-option:disabled { cursor: not-allowed; opacity: 0.5; }
+.mode-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.mode-glyph { font-size: 17px; line-height: 1.2; margin-bottom: 3px; filter: saturate(0.9); }
+.mode-name {
+  font-size: 15px; font-weight: 620;
+  /* 大字收緊字距 */
+  letter-spacing: -0.012em;
+}
+.mode-for   { font-size: 12px; color: var(--text-2); }
+.mode-trade { font-size: 11.5px; color: var(--text-3); letter-spacing: 0.004em; }
+.mode-option[aria-checked="true"] .mode-for { color: var(--text-2); }
+
+.mode-status {
+  margin: 13px 0 0;
+  font-size: 12.5px; color: var(--text-2);
+  display: flex; align-items: center; gap: 7px;
+}
+.mode-status::before {
+  content: "";
+  flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--grey);
+  transition: background var(--spring-fast);
+}
+.mode-status[data-tone="ok"]::before    { background: var(--green); }
+.mode-status[data-tone="warn"]::before  { background: var(--amber); }
+.mode-status[data-tone="error"]::before { background: var(--red); }
+.mode-status[data-tone="busy"]::before {
+  background: var(--accent);
+  animation: modepulse 1.5s ease-in-out infinite;
+}
+@keyframes modepulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.32; }
+}
+
+.modecard { padding-bottom: 16px; }
+
 /* ---------------------------------------------------------------- 鍵值表 */
 .kv { margin: 10px 0 0; display: grid; grid-template-columns: 150px 1fr; gap: 7px 14px; }
 .kv dt { font-size: 12.5px; color: var(--text-2); }
@@ -737,7 +831,11 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.14); }
   }
   /* 減少動態不代表沒有回饋 —— 保留不會造成前庭不適的透明度變化 */
   .nav-item:active, .btn:active, .reset-button:active { transform: none; opacity: .78; }
+  .mode-option:active { transform: none; opacity: .78; }
   .toast { animation: fade-in 140ms ease-out; }
+  /* 指示器仍然要移動（位置就是狀態，不能不動），
+     但改成幾乎瞬移，不留下橫向掃過畫面的軌跡 */
+  .modeswitch-indicator { transition-duration: 90ms !important; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -745,7 +843,15 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.14); }
     background: var(--surface-solid);
     backdrop-filter: none; -webkit-backdrop-filter: none;
   }
+  /* 卡片變實色後凹槽要更明確，否則指示器和背景會分不出來。
+     這裡加深「陰影」而不是改 --well —— --well 是分深淺主題各自定義的，
+     在這裡覆寫會把淺色主題也一起壓黑。 */
+  .modeswitch { box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28); }
   body::before { display: none; }
+}
+
+@media (prefers-contrast: more) {
+  .modeswitch-indicator { border: 1.5px solid var(--accent); }
 }
 
 @media (prefers-contrast: more) {

@@ -55,6 +55,8 @@
   const state = {
     config: {},
     device: null,
+    driverMode: null,
+    modePending: '',
     monitor: {},
     stats: {},
     ghosts: [],
@@ -150,6 +152,7 @@
     // 動態產生的內容不受 data-i18n 影響，必須自己重畫一次
     renderViewHeader();
     if (state.device) renderDevice(state.device);
+    if (state.driverMode) renderDriverMode(state.driverMode);
     if (state.stats) renderStats(state.stats);
     if (state.monitor) renderMonitor(state.monitor);
     renderHistory(state.history);
@@ -179,7 +182,7 @@
 
   // ================================================================ 視圖切換
 
-  const VIEWS = ['status', 'detect', 'settings', 'history', 'maintenance'];
+  const VIEWS = ['status', 'mode', 'detect', 'settings', 'history', 'maintenance'];
 
   function renderViewHeader() {
     $('#view-title').textContent = t(`view.${state.view}.title`);
@@ -207,6 +210,7 @@
 
     if (name === 'maintenance') scanGhosts();
     if (name === 'history') refreshHistory();
+    if (name === 'mode') refreshDriverMode(true);
   }
 
   // ================================================================ 開關元件
@@ -384,6 +388,162 @@
     $('#stat-7d').textContent = t('stat.7d', { n: stats.resets_7d || 0 });
     $('#stat-gap').textContent =
       stats.mean_gap_hours != null ? t('unit.hours', { n: stats.mean_gap_hours }) : '—';
+  }
+
+  // ================================================================ 渲染：驅動模式
+
+  const modeLabel = (mode) => t(mode === 'asio' ? 'mode.asio.name' : 'mode.daily.name');
+
+  function renderDriverMode(data) {
+    if (!data) return;
+    state.driverMode = data;
+
+    const sw = $('#modeswitch');
+    /* 切換要花十幾秒。指示器在切換期間停在「目標」位置而不是原位 ——
+     * 按下的當下就要有東西動，不然整個操作讀起來像沒接上。
+     * 同時掛上 is-pending 明確表示「還沒確認」，失敗時再滑回真實位置，
+     * 而 CSS transition 是從目前的呈現值開始，所以滑回去不會跳。 */
+    const shown = state.modePending || data.mode;
+    sw.dataset.selected = shown === 'asio' ? 'asio' : 'daily';
+    sw.classList.toggle('is-pending', !!state.modePending);
+
+    const locked = !data.elevated || !data.available || state.busy || !!state.modePending;
+    $$('.mode-option').forEach((btn) => {
+      btn.setAttribute('aria-checked', String(btn.dataset.mode === shown));
+      btn.disabled = locked;
+    });
+
+    renderModeStatus(data);
+    renderModeEvidence(data);
+  }
+
+  function renderModeStatus(data) {
+    const el = $('#mode-status');
+    let tone = 'ok';
+    let text = '';
+
+    if (state.modePending) {
+      tone = 'busy';
+      text = t('mode.status.switching', { mode: modeLabel(state.modePending) });
+    } else if (!data.elevated) {
+      tone = 'error';
+      text = t('mode.status.noadmin');
+    } else if (!data.available) {
+      tone = 'error';
+      text = t('mode.status.nodevice');
+    } else if (!data.healthy) {
+      tone = 'error';
+      text = t('mode.status.unhealthy', { problem: data.root_problem || '—' });
+    } else if (data.mode === 'unknown') {
+      tone = 'warn';
+      text = t('mode.status.unknown', { service: data.root_service || '—' });
+    } else if (data.complete === false) {
+      // 母節點換綁成功但音訊路徑沒起來。這個狀態最危險 —— 看起來像成功，
+      // 實際上沒有可用裝置，所以一定要當成錯誤顯示。
+      tone = 'error';
+      text = t('mode.status.incomplete', { mode: modeLabel(data.mode) });
+    } else {
+      text = t('mode.status.ok', { mode: modeLabel(data.mode) });
+    }
+
+    el.dataset.tone = tone;
+    el.textContent = text;
+
+    // 裝置沒有驅動、或音訊路徑沒起來時，救援按鈕是唯一的出路
+    const broken =
+      !!data.elevated &&
+      data.available &&
+      (!data.healthy || data.mode === 'unknown' || data.complete === false);
+    $('#mode-broken-banner').hidden = !broken;
+    if (broken) {
+      $('#mode-broken-detail').textContent = t('mode.broken.body.detail', {
+        service: data.root_service || '—',
+        problem: data.root_problem || '—',
+      });
+    }
+  }
+
+  function renderModeEvidence(data) {
+    $('#mode-verdict').textContent =
+      data.mode === 'unknown' ? t('mode.verdict.unknown') : modeLabel(data.mode);
+
+    const endpoints = (data.endpoints || []).join('、');
+    const rows = [
+      // 「音訊路徑」放第一行：它才是「這個模式現在能不能用」的答案，
+      // 母節點綁在誰身上只是過程。
+      [
+        t('mode.kv.complete'),
+        data.complete ? t('mode.complete.yes') : t('mode.complete.no'),
+      ],
+      [t('mode.kv.parent'), data.root_service || '—'],
+      [t('mode.kv.audio'), data.audio_service || '—'],
+      [t('mode.kv.adapter'), data.adapter_id || '—'],
+      [t('mode.kv.inf'), data.root_inf || '—'],
+      [t('mode.kv.status'), `${data.root_status || '—'} / ${data.root_problem || '—'}`],
+      [t('mode.kv.endpoints'), endpoints || '—'],
+      [t('mode.kv.hwid'), data.hardware_id || '—'],
+      [t('mode.kv.focusriteinf'), data.focusrite_inf || t('mode.kv.focusriteinf.none')],
+    ];
+    $('#mode-kv').innerHTML = rows
+      .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd class="mono">${escapeHtml(v)}</dd>`)
+      .join('');
+  }
+
+  async function refreshDriverMode(force = false) {
+    const result = await call('driver_mode', force);
+    if (result && result.driver_mode) renderDriverMode(result.driver_mode);
+  }
+
+  async function doSwitchMode(mode) {
+    const data = state.driverMode;
+    if (!data || state.busy || state.modePending) return;
+    if (!data.elevated || !data.available) return;
+    if (data.mode === mode && data.healthy) return;
+
+    state.modePending = mode;
+    renderDriverMode(data);
+    toast(t('toast.mode.start', { mode: modeLabel(mode) }), t('toast.mode.start.sub'), 'info', 7000);
+
+    const result = await call('switch_driver_mode', mode);
+    state.modePending = '';
+
+    if (result && result.ok) {
+      toast(t('toast.mode.ok', { mode: modeLabel(mode) }), result.detail || '', 'ok', 6000);
+    } else {
+      // 切換失敗可能讓 Windows 完全沒有音訊裝置，訊息一定要留久一點
+      toast(
+        t('toast.mode.fail'),
+        [(result && result.message) || '', (result && result.detail) || '']
+          .filter(Boolean)
+          .join('\n'),
+        'error',
+        16000
+      );
+    }
+    await refreshDriverMode(true);
+    await refreshDevice(true);
+    refreshHistory();
+  }
+
+  async function doRepairMode() {
+    if (state.busy || state.modePending) return;
+    state.modePending = 'daily';
+    if (state.driverMode) renderDriverMode(state.driverMode);
+
+    const result = await call('repair_driver_binding');
+    state.modePending = '';
+
+    toast(
+      result && result.ok ? t('toast.mode.repaired') : t('toast.mode.repair.fail'),
+      [(result && result.message) || '', (result && result.detail) || '']
+        .filter(Boolean)
+        .join('\n'),
+      result && result.ok ? 'ok' : 'error',
+      result && result.ok ? 6000 : 16000
+    );
+    await refreshDriverMode(true);
+    await refreshDevice(true);
+    refreshHistory();
   }
 
   // ================================================================ 渲染：監聽儀表
@@ -591,8 +751,9 @@
     const label = t(`ev.${event}`) === `ev.${event}` ? event : t(`ev.${event}`);
 
     let tone = 'idle';
-    if (event.startsWith('reset_')) tone = record.ok ? 'ok' : 'error';
-    else if (event === 'anomaly' || event === 'auto_skipped') tone = 'warn';
+    if (event.startsWith('reset_') || event.startsWith('mode_')) {
+      tone = record.ok ? 'ok' : 'error';
+    } else if (event === 'anomaly' || event === 'auto_skipped') tone = 'warn';
     else if (event === 'auto_suspended') tone = 'error';
     else if (event === 'ghost_cleanup') tone = 'ok';
 
@@ -605,6 +766,7 @@
     if (record.removed != null) {
       bits.push(t('hist.removed', { removed: record.removed, requested: record.requested }));
     }
+    if (record.resulting) bits.push(modeLabel(record.resulting));
 
     const time = (record.iso || '').replace('T', ' ').slice(0, 19);
     return `<li class="tl-item">
@@ -743,10 +905,15 @@
         case 'stats':
           renderStats(payload);
           break;
+        case 'driver_mode':
+          renderDriverMode(payload);
+          break;
         case 'busy':
           state.busy = !!payload.busy;
           $('#btn-reset').classList.toggle('is-busy', state.busy);
           if (state.busy) $('#status-ring').dataset.tone = 'busy';
+          // 切換與重置共用同一把鎖，所以 busy 一變就要同步模式頁的可按狀態
+          if (state.driverMode) renderDriverMode(state.driverMode);
           break;
         case 'anomaly':
           toast(t('toast.anomaly', { label: payload.label || '' }), payload.detail || '', 'warn', 8000);
@@ -783,8 +950,27 @@
     $('#btn-refresh').addEventListener('click', async () => {
       await refreshDevice(true);
       await refreshStats();
+      if (state.view === 'mode') await refreshDriverMode(true);
       toast(t('toast.refreshed'), '', 'ok', 1800);
     });
+
+    // --- 驅動模式 ---
+    $('#modeswitch').addEventListener('click', (event) => {
+      const btn = event.target.closest('.mode-option');
+      if (btn && !btn.disabled) doSwitchMode(btn.dataset.mode);
+    });
+    // 分段控制的既有慣例是左右鍵在段之間移動，照著做才不會讓人重新學
+    $('#modeswitch').addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const target = event.key === 'ArrowLeft' ? 'daily' : 'asio';
+      const btn = $(`.mode-option[data-mode="${target}"]`);
+      if (btn && !btn.disabled) {
+        btn.focus();
+        doSwitchMode(target);
+      }
+    });
+    $('#btn-repair-mode').addEventListener('click', doRepairMode);
     $('#btn-minimise').addEventListener('click', () => call('hide_window'));
     $('#btn-elevate').addEventListener('click', () => call('relaunch_elevated'));
     $('#btn-resume-auto').addEventListener('click', async () => {
@@ -964,10 +1150,15 @@
     // 裝置狀態要跑 PowerShell（約 2–3 秒），刻意不 await ——
     // 其餘頁面的資料已經在畫面上了，沒有理由陪它一起等。
     $('#status-ring').classList.add('is-loading');
-    refreshDevice(true).finally(() => {
-      $('#status-ring').classList.remove('is-loading');
-      trace('boot: device rendered');
-    });
+    refreshDevice(true)
+      .finally(() => {
+        $('#status-ring').classList.remove('is-loading');
+        trace('boot: device rendered');
+      })
+      // 驅動模式也要跑 PowerShell。刻意接在裝置查詢之後而不是併發 ——
+      // 兩支 PowerShell 同時啟動只會互搶 CPU，讓兩邊都更慢。
+      .then(() => refreshDriverMode(true))
+      .finally(() => trace('boot: driver mode rendered'));
   }
 
   // 前端例外若沒有出口，畫面只會安靜地半殘 —— 一律回報到後端紀錄並提示使用者
