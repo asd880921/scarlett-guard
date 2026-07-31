@@ -58,6 +58,14 @@ class GuardService:
     def subscribe(self, callback: Callable[[str, dict[str, Any]], None]) -> None:
         self._listeners.append(callback)
 
+    def emit_history(self, record: dict[str, Any]) -> None:
+        """給 api 層用：寫完紀錄之後讓 UI 的時間軸跟著更新。
+
+        音效相關的動作不經過這一層（它們不碰裝置，沒有理由被 _action_lock 擋住），
+        但仍然該出現在紀錄裡 —— 「誰把預設裝置換掉了」是事後會想查的事。
+        """
+        self._emit("history", record)
+
     def _emit(self, channel: str, payload: dict[str, Any]) -> None:
         for callback in list(self._listeners):
             try:

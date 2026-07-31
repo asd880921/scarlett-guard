@@ -669,6 +669,133 @@ input[type="range"]::-webkit-slider-thumb {
 input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.14); }
 
 
+/* ---------------------------------------------------------------- 音量混音器 */
+/* 圖示字彙表本身不該佔版面 */
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.ico {
+  width: 18px; height: 18px;
+  fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* 五欄固定：識別圖示 / 名稱 / 靜音 / 數值 / 滑桿。
+   欄位對齊是這一頁最重要的一件事 —— 十幾列的滑桿只要有一列沒對齊，
+   整頁看起來就是壞的。數值欄給固定寬度，不讓 100 → 99 造成滑桿左右跳動。 */
+.mixrow {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 34px 190px;
+  align-items: center;
+  gap: 0 10px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+}
+.rowset .mixrow:first-child { border-top: 0; }
+
+.mix-icon {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  background: var(--well);
+  color: var(--text-2);
+  overflow: hidden;
+}
+/* 執行檔取出來的點陣圖示。24px 而不是滿版 32px —— 留白讓它和
+   自繪的線條圖示在視覺重量上對得起來 */
+.mix-icon img {
+  width: 24px; height: 24px;
+  display: block;
+  image-rendering: -webkit-optimize-contrast;
+}
+/* 應用程式列的圖示是彩色的點陣圖，底色會和它打架，所以不給底 */
+.mix-icon.is-photo { background: none; }
+
+.mix-text { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.mix-text strong {
+  font-size: 13px; font-weight: 560;
+  letter-spacing: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mix-sub {
+  font-size: 11.5px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.mix-mute {
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border: 0; border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--press), color var(--press), transform var(--press);
+}
+.mix-mute:hover { background: var(--line); color: var(--text); }
+/* 回饋在按下的當下發生，不等 click */
+.mix-mute:active { transform: scale(0.92); }
+.mix-mute:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 靜音是一個「不正常」的狀態，要一眼看得出來，但不到錯誤的程度 */
+.mix-mute[aria-pressed="true"] { color: var(--amber); }
+
+.mix-val {
+  font-size: 12px; color: var(--text-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;   /* 數字等寬，拖動時不會左右抖 */
+}
+
+.mix-slot { position: relative; display: flex; flex-direction: column; gap: 3px; }
+.mix-slot input[type="range"] { width: 100%; height: 18px; }
+
+/* 音量表。刻意做得很細 —— 它是狀態指示，不是主角，
+   而且要能和正上方的滑桿軌道區分開來。 */
+.meter {
+  height: 2px; border-radius: 2px;
+  background: var(--well);
+  overflow: hidden;
+}
+.meter-fill {
+  display: block; height: 100%; width: 0%;
+  border-radius: 2px;
+  background: var(--green);
+  /* 起音要立刻到，衰減交給 JS 做，這裡只負責把每一格之間補平 */
+  transition: width 90ms linear;
+}
+.mixrow.is-muted .meter-fill { background: var(--grey); }
+
+/* 滑桿的已填滿段。--fill 由 JS 在每次 input 事件當下寫入，
+   所以填色和拇指是同一幀移動的，不會有一個先動一個後到。 */
+.mix-slot input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 0%),
+    var(--line-hi) var(--fill, 0%)
+  );
+}
+.mixrow.is-muted .mix-slot input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--grey) var(--fill, 0%),
+    var(--line-hi) var(--fill, 0%)
+  );
+}
+.mixrow.is-muted .mix-val,
+.mixrow.is-muted .mix-text strong { color: var(--text-3); }
+
+.mix-pick { grid-column: 3 / -1; justify-self: end; min-width: 0; }
+.mix-pick select { min-width: 240px; max-width: 300px; }
+
+/* 沒有在出聲的程式往後退一層，但不要退到看不見 —— 使用者常常就是要
+   趁程式安靜的時候先把音量調好 */
+.mixrow[data-active="false"] .mix-icon { opacity: 0.55; }
+
+.mixrow.is-busy { opacity: 0.5; pointer-events: none; }
+
+/* 視窗變窄時先犧牲滑桿寬度，再把裝置下拉選單放到整列 */
+@media (max-width: 880px) {
+  .mixrow { grid-template-columns: 34px minmax(0, 1fr) auto 34px 130px; }
+  .mix-pick select { min-width: 180px; }
+}
+
 /* ---------------------------------------------------------------- 時間軸 */
 .timeline { list-style: none; margin: 14px 0 0; padding: 0; }
 .tl-item {

@@ -148,6 +148,10 @@
     renderGhosts();
     renderPaths(state.paths);
     renderLanguageSelect();
+    // 「系統音效」「未知的應用程式」這些標籤是前端翻的，得跟著重畫。
+    // 清單簽章一併清掉，否則 renderApps 會判定沒變而直接跳過重建。
+    audio.appKeys = '';
+    if (audio.data) renderAudio(audio.data);
   }
 
   function renderLanguageSelect() {
@@ -170,7 +174,7 @@
 
   // ================================================================ 視圖切換
 
-  const VIEWS = ['status', 'settings'];
+  const VIEWS = ['status', 'audio', 'settings'];
 
   function renderViewHeader() {
     $('#view-title').textContent = t(`view.${state.view}.title`);
@@ -197,6 +201,14 @@
     $('#scroll').scrollTop = 0;
 
     if (name === 'settings') scanGhosts();
+
+    // 音效頁一離開就把輪詢停掉；進來時立刻重查一次，不要先讓人看到上次的殘影
+    if (name === 'audio') {
+      refreshAudio();
+      startAudioPolling();
+    } else {
+      stopAudioPolling();
+    }
   }
 
   // ================================================================ 開關與收合
@@ -698,6 +710,389 @@
     if (result && result.device) renderDevice(result.device);
   }
 
+  // ================================================================ 系統音效
+
+  /* 這一頁和其他頁的節奏完全不同。
+   *
+   * 驅動模式那邊每次查詢要跑兩秒的 PowerShell，所以查得很疏、而且要顯示忙碌狀態；
+   * 這裡走的是 Core Audio COM，音量表一次 0.2 毫秒、完整清單一次 8 毫秒。
+   * 便宜到可以直接做成即時的 —— 滑桿拉下去聲音就變了，音量表跟著聲音跳，
+   * 中間沒有任何「處理中」。這才是混音器該有的手感。
+   */
+  const audio = {
+    data: null,
+    polling: false,
+    appKeys: '',
+    // 音量表的顯示值。起音直接跟上，衰減自己做 —— 直接畫原始值的話
+    // 表會在每個取樣點之間閃爍，看起來像壞掉而不是像在動。
+    shownPeak: { render: 0, capture: 0 },
+  };
+
+  /** 拖動中的滑桿不能被輪詢覆寫，否則手指還按著、數值卻自己跳回去。 */
+  const HOLD_MS = 700;
+
+  function isHeld(input) {
+    const touched = Number(input.dataset.touched || 0);
+    return touched > 0 && performance.now() - touched < HOLD_MS;
+  }
+
+  /** 前緣 + 後緣節流：第一下立刻送出，之後最多每 wait 毫秒一次，且保證送出最後一次。 */
+  function throttle(fn, wait) {
+    let last = 0;
+    let timer = null;
+    let lastArgs = null;
+    return (...args) => {
+      lastArgs = args;
+      const remain = wait - (performance.now() - last);
+      if (remain <= 0) {
+        last = performance.now();
+        fn(...lastArgs);
+      } else if (timer === null) {
+        timer = setTimeout(() => {
+          timer = null;
+          last = performance.now();
+          fn(...lastArgs);
+        }, remain);
+      }
+    };
+  }
+
+  /** 把滑桿的已填滿段畫到目前值。和拇指同一幀，不透過任何過場。 */
+  function paintSlider(input, value) {
+    input.style.setProperty('--fill', `${Math.max(0, Math.min(100, value))}%`);
+  }
+
+  function setRowValue(row, value) {
+    const input = row.querySelector('input[type="range"]');
+    const label = row.querySelector('.mix-val');
+    if (!input) return;
+    if (!isHeld(input)) {
+      input.value = String(value);
+      paintSlider(input, value);
+    }
+    if (label) label.textContent = String(value);
+  }
+
+  function setRowMuted(row, muted) {
+    row.classList.toggle('is-muted', !!muted);
+    const btn = row.querySelector('.mix-mute');
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', String(!!muted));
+    const use = btn.querySelector('use');
+    if (!use) return;
+    const kind = btn.dataset.glyph === 'mic' ? 'i-mic' : 'i-vol';
+    use.setAttribute('href', muted ? `#${kind}-off` : `#${kind}`);
+  }
+
+  /** 綁定一支滑桿：立刻反應，節流送出，放開後再送一次確定值。 */
+  function bindSlider(input, send) {
+    const row = input.closest('.mixrow');
+    const label = row && row.querySelector('.mix-val');
+    const push = throttle((value) => send(value), 60);
+
+    input.addEventListener('input', () => {
+      const value = Number(input.value);
+      input.dataset.touched = String(performance.now());
+      // 畫面先走，不等後端回應 —— 這條路徑上任何等待都會直接被感覺成「卡」
+      paintSlider(input, value);
+      if (label) label.textContent = String(value);
+      push(value);
+    });
+    // change 在放開的當下觸發。節流可能把最後一次移動壓在後緣計時器裡，
+    // 這裡補送一次，確保停下來的位置就是真正生效的值。
+    input.addEventListener('change', () => send(Number(input.value)));
+  }
+
+  function bindMute(btn, send) {
+    btn.addEventListener('click', () => {
+      const row = btn.closest('.mixrow');
+      const muted = btn.getAttribute('aria-pressed') !== 'true';
+      setRowMuted(row, muted);
+      send(muted);
+    });
+  }
+
+  // --- 繪製 ---------------------------------------------------------------
+
+  function appIconMarkup(session) {
+    if (session.icon) {
+      return `<span class="mix-icon is-photo"><img src="${escapeHtml(session.icon)}" alt="" /></span>`;
+    }
+    const glyph = session.is_system ? 'i-system' : 'i-app';
+    return `<span class="mix-icon"><svg class="ico"><use href="#${glyph}"></use></svg></span>`;
+  }
+
+  function sessionLabel(session) {
+    if (session.is_system) return t('audio.systemsounds');
+    return session.name || t('audio.unknownapp');
+  }
+
+  function renderApps(sessions) {
+    const host = $('#audio-apps');
+    if (!host) return;
+    $('#apps-count').textContent = t('audio.apps.count', { n: sessions.length });
+
+    if (!sessions.length) {
+      host.innerHTML = `<div class="empty">${escapeHtml(t('audio.apps.empty'))}</div>`;
+      audio.appKeys = '';
+      return;
+    }
+
+    /* 分隔字元用 U+0001，不是逗號也不是換行。
+     * 工作階段識別字串長得像 `{guid}.{guid}|\Device\Harddisk…|…%b{guid}`，
+     * 一般標點幾乎都可能出現在裡面；挑一個控制字元，applyLevels 那邊才保證
+     * split 得回原本那幾把鑰匙。 */
+    const keys = sessions.map((s) => s.key).join('\u0001');
+    if (keys === audio.appKeys) {
+      // 清單沒變就只更新數值 —— 重建 DOM 會把正在拖的滑桿抽掉
+      sessions.forEach(updateAppRow);
+      return;
+    }
+    audio.appKeys = keys;
+
+    host.innerHTML = sessions
+      .map(
+        (session) => `<div class="mixrow" data-key="${escapeHtml(session.key)}"
+             data-active="${session.active ? 'true' : 'false'}">
+          ${appIconMarkup(session)}
+          <div class="mix-text">
+            <strong>${escapeHtml(sessionLabel(session))}</strong>
+          </div>
+          <button class="mix-mute" data-glyph="vol" aria-pressed="false"
+                  title="${escapeHtml(t('audio.app.mute'))}">
+            <svg class="ico"><use href="#i-vol"></use></svg>
+          </button>
+          <span class="mix-val">${session.volume}</span>
+          <div class="mix-slot">
+            <input type="range" min="0" max="100" step="1" value="${session.volume}"
+                   aria-label="${escapeHtml(sessionLabel(session))}" />
+          </div>
+        </div>`
+      )
+      .join('');
+
+    host.querySelectorAll('.mixrow').forEach((row) => {
+      const key = row.dataset.key;
+      const input = row.querySelector('input[type="range"]');
+      paintSlider(input, Number(input.value));
+      bindSlider(input, (value) => call('set_app_volume', key, value));
+      bindMute(row.querySelector('.mix-mute'), (muted) => call('set_app_mute', key, muted));
+    });
+    sessions.forEach(updateAppRow);
+  }
+
+  function updateAppRow(session) {
+    const row = $(`#audio-apps .mixrow[data-key="${CSS.escape(session.key)}"]`);
+    if (!row) return;
+    row.dataset.active = session.active ? 'true' : 'false';
+    setRowValue(row, session.volume);
+    setRowMuted(row, session.muted);
+  }
+
+  function renderDeviceSelect(select, state) {
+    if (!select) return;
+    const devices = (state && state.devices) || [];
+    const current = (state && state.default_id) || '';
+    // 只有清單或選取真的變了才重建：使用者可能正把下拉選單展開著
+    const signature = devices.map((d) => d.id).join('\u0001') + '\u0002' + current;
+    if (select.dataset.signature === signature) return;
+    select.dataset.signature = signature;
+
+    select.innerHTML = '';
+    if (!devices.length) {
+      const option = document.createElement('option');
+      option.textContent = t('audio.nodevice');
+      select.appendChild(option);
+      select.disabled = true;
+      return;
+    }
+    select.disabled = false;
+    devices.forEach((dev) => {
+      const option = document.createElement('option');
+      option.value = dev.id;
+      option.textContent = dev.name;
+      select.appendChild(option);
+    });
+    select.value = current;
+  }
+
+  function renderEndpoint(prefix, state) {
+    const row = $(`#${prefix}-slider`).closest('.mixrow');
+    const available = !!(state && state.available);
+    row.classList.toggle('is-busy', !available);
+
+    const devices = (state && state.devices) || [];
+    const current = devices.find((d) => d.id === (state && state.default_id));
+    $(`#${prefix}-name`).textContent = current ? current.name : t('audio.nodevice');
+
+    if (!available) {
+      $(`#${prefix}-val`).textContent = '—';
+      return;
+    }
+    setRowValue(row, state.volume);
+    setRowMuted(row, state.muted);
+  }
+
+  function renderAudio(data) {
+    if (!data) return;
+    audio.data = data;
+
+    renderEndpoint('output', data.render);
+    renderEndpoint('input', data.capture);
+    renderDeviceSelect($('#output-device'), data.render);
+    renderDeviceSelect($('#input-device'), data.capture);
+    renderApps(data.sessions || []);
+
+    const none = !(data.render && data.render.available);
+    $('#audio-banner').hidden = !none;
+  }
+
+  /** 輪詢回來的數值。只碰數字，不動任何結構。 */
+  function applyLevels(levels) {
+    if (!levels) return;
+    [['output', 'render'], ['input', 'capture']].forEach(([prefix, flow]) => {
+      const state = levels[flow];
+      if (!state) return;
+      const row = $(`#${prefix}-slider`).closest('.mixrow');
+      setRowValue(row, state.volume);
+      setRowMuted(row, state.muted);
+      if (audio.data && audio.data[flow]) {
+        audio.data[flow].volume = state.volume;
+        audio.data[flow].muted = state.muted;
+        // 預設裝置可能被別的程式（或 Windows 自己）換掉，換了就得重抓清單
+        if (state.default_id && state.default_id !== audio.data[flow].default_id) {
+          refreshAudio();
+        }
+      }
+    });
+
+    const sessions = levels.sessions || {};
+    const keys = Object.keys(sessions);
+    const known = audio.appKeys ? audio.appKeys.split('\u0001') : [];
+    // 有程式開始或結束播放 —— 名稱與圖示只有完整查詢才有，所以重抓一次
+    if (keys.length !== known.length || keys.some((k) => !known.includes(k))) {
+      refreshAudio();
+      return;
+    }
+    keys.forEach((key) => {
+      const state = sessions[key];
+      updateAppRow({
+        key,
+        volume: state.volume,
+        muted: state.muted,
+        active: state.active,
+      });
+    });
+  }
+
+  function applyPeaks(peaks) {
+    [['output', 'render'], ['input', 'capture']].forEach(([prefix, flow]) => {
+      const raw = Number(peaks[flow] || 0);
+      // 起音立刻到頂，衰減每格乘 0.72。真正的音量表都是這個形狀 ——
+      // 直接畫原始值只會得到一條瘋狂閃爍的線。
+      const shown = Math.max(raw, audio.shownPeak[flow] * 0.72);
+      audio.shownPeak[flow] = shown;
+      const meter = $(`#${prefix}-meter`);
+      if (meter) meter.style.width = `${Math.min(100, Math.round(shown * 100))}%`;
+    });
+  }
+
+  async function refreshAudio() {
+    const result = await call('audio_overview');
+    if (result && result.audio) {
+      renderAudio(result.audio);
+    } else if (result && result.message) {
+      toast(t('audio.fail'), result.message, 'error', 7000);
+    }
+  }
+
+  /* 兩條輪詢，頻率差一個數量級。
+   *
+   * 音量表要跟得上聲音（約 90 毫秒），但它只要兩個浮點數，一次 0.2 毫秒。
+   * 完整狀態（音量、靜音、有哪些程式在播）變化慢得多，800 毫秒綽綽有餘，
+   * 而它要列舉所有工作階段，一次 8 毫秒 —— 用音量表的頻率去打它是浪費。
+   *
+   * 兩條都在離開這一頁或視窗收起來時停掉：收在系統匣裡還在查音量表，
+   * 是純粹燒 CPU 而沒有任何人看得到。
+   */
+  function startAudioPolling() {
+    if (audio.polling) return;
+    audio.polling = true;
+
+    (async () => {
+      while (audio.polling) {
+        if (!document.hidden) {
+          const result = await call('audio_peaks');
+          if (result && result.peaks) applyPeaks(result.peaks);
+        }
+        await sleep(90);
+      }
+    })();
+
+    (async () => {
+      while (audio.polling) {
+        await sleep(800);
+        if (!audio.polling || document.hidden) continue;
+        const result = await call('audio_levels');
+        if (result && result.levels) applyLevels(result.levels);
+      }
+    })();
+  }
+
+  function stopAudioPolling() {
+    audio.polling = false;
+    audio.shownPeak.render = 0;
+    audio.shownPeak.capture = 0;
+  }
+
+  function bindAudio() {
+    bindSlider($('#output-slider'), (value) => call('set_output_volume', value));
+    bindSlider($('#input-slider'), (value) => call('set_input_volume', value));
+
+    const outMute = $('#btn-output-mute');
+    outMute.dataset.glyph = 'vol';
+    bindMute(outMute, (muted) => call('set_output_mute', muted));
+    const inMute = $('#btn-input-mute');
+    inMute.dataset.glyph = 'mic';
+    bindMute(inMute, (muted) => call('set_input_mute', muted));
+
+    [['#output-device', 'render'], ['#input-device', 'capture']].forEach(([sel, flow]) => {
+      $(sel).addEventListener('change', async (event) => {
+        const id = event.target.value;
+        const result = await call('set_default_audio_device', id, flow);
+        if (result && result.ok) {
+          const option = event.target.selectedOptions[0];
+          toast(t('audio.device.switched'), option ? option.textContent : '', 'ok', 2800);
+        } else {
+          toast(t('audio.device.fail'), (result && result.message) || '', 'error', 8000);
+        }
+        await refreshAudio();
+      });
+    });
+
+    $('#btn-audio-refresh').addEventListener('click', async () => {
+      await refreshAudio();
+      toast(t('toast.refreshed'), '', 'ok', 1600);
+    });
+
+    $('#btn-audio-reset').addEventListener('click', async () => {
+      const result = await call('reset_app_volumes');
+      await refreshAudio();
+      toast(
+        result && result.ok ? t('audio.reset.done') : t('audio.reset.fail'),
+        result && result.ok ? t('audio.reset.done.sub', { n: result.count }) : '',
+        result && result.ok ? 'ok' : 'error',
+        3600
+      );
+    });
+
+    // 視窗收進系統匣時 document.hidden 會變 true，輪詢自己會靜下來；
+    // 叫回來的時候要立刻補一次完整查詢，不然會先看到一頁過期的數字
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state.view === 'audio') refreshAudio();
+    });
+  }
+
   // ================================================================ Python → JS 事件
 
   window.SG = {
@@ -745,6 +1140,13 @@
     });
 
     $('#btn-refresh').addEventListener('click', async () => {
+      // 在音效頁按重新整理，想重整的是這一頁 —— 沒有理由讓它去跑兩支
+      // 跟眼前畫面無關、還要好幾秒的 PowerShell
+      if (state.view === 'audio') {
+        await refreshAudio();
+        toast(t('toast.refreshed'), '', 'ok', 1600);
+        return;
+      }
       await refreshDriverMode(true);
       await refreshDevice(true);
       toast(t('toast.refreshed'), '', 'ok', 1800);
@@ -774,6 +1176,7 @@
     $('#btn-reset').addEventListener('click', () => doReset('manual'));
 
     bindDisclosures();
+    bindAudio();
 
     // --- 設定 ---
     $('#cfg-language').addEventListener('change', (event) => {

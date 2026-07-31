@@ -9,7 +9,7 @@ import functools
 import traceback
 from typing import Any, Callable
 
-from . import device, elevation, hotkey, i18n, updater
+from . import audio, device, elevation, hotkey, i18n, updater
 from .paths import HISTORY_PATH, CONFIG_PATH, app_version, data_dir
 from .service import GuardService
 
@@ -151,6 +151,71 @@ class Api:
     def clear_history(self) -> dict[str, Any]:
         self._service.history.clear()
         return {"ok": True}
+
+    # ------------------------------------------------------------------
+    # 系統音效
+    # ------------------------------------------------------------------
+    # 這一整區都**不需要**提權，也不碰 PowerShell —— 走的是 Core Audio COM，
+    # 一次查詢十幾毫秒。所以它可以被高頻輪詢，和上面那些動輒兩秒的查詢是兩回事。
+    @_safe
+    def audio_overview(self) -> dict[str, Any]:
+        return {"ok": True, "audio": audio.overview()}
+
+    @_safe
+    def audio_levels(self) -> dict[str, Any]:
+        """輪詢用：只有數值，不含名稱與圖示。"""
+        return {"ok": True, "levels": audio.levels()}
+
+    @_safe
+    def audio_peaks(self) -> dict[str, Any]:
+        """音量表專用的高頻路徑，只有兩個數字。"""
+        return {"ok": True, "peaks": audio.peaks()}
+
+    @_safe
+    def set_output_volume(self, percent: int) -> dict[str, Any]:
+        audio.set_endpoint_volume("render", int(percent))
+        return {"ok": True}
+
+    @_safe
+    def set_output_mute(self, muted: bool) -> dict[str, Any]:
+        audio.set_endpoint_mute("render", bool(muted))
+        return {"ok": True}
+
+    @_safe
+    def set_input_volume(self, percent: int) -> dict[str, Any]:
+        audio.set_endpoint_volume("capture", int(percent))
+        return {"ok": True}
+
+    @_safe
+    def set_input_mute(self, muted: bool) -> dict[str, Any]:
+        audio.set_endpoint_mute("capture", bool(muted))
+        return {"ok": True}
+
+    @_safe
+    def set_app_volume(self, key: str, percent: int) -> dict[str, Any]:
+        audio.set_session_volume(str(key), int(percent))
+        return {"ok": True}
+
+    @_safe
+    def set_app_mute(self, key: str, muted: bool) -> dict[str, Any]:
+        audio.set_session_mute(str(key), bool(muted))
+        return {"ok": True}
+
+    @_safe
+    def set_default_audio_device(self, device_id: str, flow: str = "render") -> dict[str, Any]:
+        audio.set_default_device(str(device_id), str(flow or "render"))
+        record = self._service.history.log(
+            "audio_default", flow=str(flow or "render"), device=str(device_id)[-60:]
+        )
+        self._service.emit_history(record)
+        return {"ok": True}
+
+    @_safe
+    def reset_app_volumes(self) -> dict[str, Any]:
+        count = audio.reset_sessions()
+        record = self._service.history.log("audio_reset", count=count)
+        self._service.emit_history(record)
+        return {"ok": True, "count": count}
 
     # ------------------------------------------------------------------
     # 視窗與權限

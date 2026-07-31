@@ -7,6 +7,47 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- 圖示字彙表。用 <symbol> + <use> 而不是把每個 SVG 貼在用到的地方：
+       同一個喇叭圖示在靜音鈕、輸出裝置列、系統音效列都會出現，複製三份的話
+       改一次就得改三處，遲早會有一處被漏掉。 -->
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-vol" viewBox="0 0 24 24">
+        <path d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4z"/>
+        <path d="M15.8 9.6a3.4 3.4 0 0 1 0 4.8"/>
+        <path d="M18.4 7a7 7 0 0 1 0 10"/>
+      </symbol>
+      <symbol id="i-vol-off" viewBox="0 0 24 24">
+        <path d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4z"/>
+        <path d="M16.2 9.8l5 4.4"/>
+        <path d="M21.2 9.8l-5 4.4"/>
+      </symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24">
+        <path d="M12 3.5a2.7 2.7 0 0 1 2.7 2.7v5.6a2.7 2.7 0 0 1-5.4 0V6.2A2.7 2.7 0 0 1 12 3.5z"/>
+        <path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0"/>
+        <path d="M12 17.6v2.9"/>
+      </symbol>
+      <symbol id="i-mic-off" viewBox="0 0 24 24">
+        <path d="M12 3.5a2.7 2.7 0 0 1 2.7 2.7v5.6a2.7 2.7 0 0 1-5.4 0V6.2A2.7 2.7 0 0 1 12 3.5z"/>
+        <path d="M5.6 11.2a6.4 6.4 0 0 0 12.8 0"/>
+        <path d="M12 17.6v2.9"/>
+        <path d="M4 3.6l16 16.8"/>
+      </symbol>
+      <!-- 系統音效：一台喇叭箱。和「應用程式」的視窗形狀刻意拉開差距 -->
+      <symbol id="i-system" viewBox="0 0 24 24">
+        <path d="M7.4 3h9.2a1.9 1.9 0 0 1 1.9 1.9v14.2a1.9 1.9 0 0 1-1.9 1.9H7.4a1.9 1.9 0 0 1-1.9-1.9V4.9A1.9 1.9 0 0 1 7.4 3z"/>
+        <path d="M12 11.6a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4z"/>
+        <path d="M12 6.3h.01"/>
+      </symbol>
+      <!-- 抓不到執行檔圖示時的退路 -->
+      <symbol id="i-app" viewBox="0 0 24 24">
+        <path d="M4.5 4.5h15v15h-15z"/>
+        <path d="M4.5 9h15"/>
+        <path d="M7.4 6.7h.01"/>
+      </symbol>
+    </defs>
+  </svg>
+
   <div class="app">
     <!-- 側欄：結構性區域，用較重的材質與其他內容分層 -->
     <aside class="sidebar">
@@ -26,6 +67,9 @@
       <nav class="nav" id="nav">
         <button class="nav-item is-active" data-view="status">
           <span class="nav-glyph">⇄</span><span data-i18n="nav.status">狀態</span>
+        </button>
+        <button class="nav-item" data-view="audio">
+          <span class="nav-glyph">🔊</span><span data-i18n="nav.audio">音效</span>
         </button>
         <button class="nav-item" data-view="settings">
           <span class="nav-glyph">⚙</span><span data-i18n="nav.settings">設定</span>
@@ -155,6 +199,90 @@
                     </div>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <!-- ============ 音效 ============ -->
+            <section class="view" data-view="audio">
+
+              <!-- Core Audio 不需要提權，但整頁在沒有裝置時沒有東西可調 -->
+              <div class="banner banner-warn" id="audio-banner" hidden>
+                <div class="banner-body">
+                  <strong data-i18n="audio.none.title"></strong>
+                  <span data-i18n="audio.none.body"></span>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head"><h3 data-i18n="audio.system"></h3></div>
+                <div class="rowset" id="audio-system">
+
+                  <div class="mixrow">
+                    <span class="mix-icon"><svg class="ico"><use href="#i-vol"></use></svg></span>
+                    <div class="mix-text">
+                      <strong data-i18n="audio.output.volume"></strong>
+                      <span class="mix-sub" id="output-name">—</span>
+                    </div>
+                    <button class="mix-mute" id="btn-output-mute" aria-pressed="false"
+                            data-i18n-aria="audio.output.mute">
+                      <svg class="ico"><use href="#i-vol"></use></svg>
+                    </button>
+                    <span class="mix-val" id="output-val">—</span>
+                    <div class="mix-slot">
+                      <input type="range" min="0" max="100" step="1" id="output-slider"
+                             data-i18n-aria="audio.output.volume" />
+                      <span class="meter"><span class="meter-fill" id="output-meter"></span></span>
+                    </div>
+                  </div>
+
+                  <div class="mixrow">
+                    <span class="mix-icon"><svg class="ico"><use href="#i-vol"></use></svg></span>
+                    <div class="mix-text"><strong data-i18n="audio.output.device"></strong></div>
+                    <div class="mix-pick">
+                      <select id="output-device" data-i18n-aria="audio.output.device"></select>
+                    </div>
+                  </div>
+
+                  <div class="mixrow">
+                    <span class="mix-icon"><svg class="ico"><use href="#i-mic"></use></svg></span>
+                    <div class="mix-text">
+                      <strong data-i18n="audio.input.volume"></strong>
+                      <span class="mix-sub" id="input-name">—</span>
+                    </div>
+                    <button class="mix-mute" id="btn-input-mute" aria-pressed="false"
+                            data-i18n-aria="audio.input.mute">
+                      <svg class="ico"><use href="#i-mic"></use></svg>
+                    </button>
+                    <span class="mix-val" id="input-val">—</span>
+                    <div class="mix-slot">
+                      <input type="range" min="0" max="100" step="1" id="input-slider"
+                             data-i18n-aria="audio.input.volume" />
+                      <span class="meter"><span class="meter-fill" id="input-meter"></span></span>
+                    </div>
+                  </div>
+
+                  <div class="mixrow">
+                    <span class="mix-icon"><svg class="ico"><use href="#i-mic"></use></svg></span>
+                    <div class="mix-text"><strong data-i18n="audio.input.device"></strong></div>
+                    <div class="mix-pick">
+                      <select id="input-device" data-i18n-aria="audio.input.device"></select>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <h3 data-i18n="audio.apps"></h3>
+                  <span class="card-note" id="apps-count">—</span>
+                </div>
+                <div class="rowset" id="audio-apps"></div>
+                <div class="btn-row">
+                  <button class="btn btn-quiet" id="btn-audio-refresh" data-i18n="audio.rescan"></button>
+                  <button class="btn btn-quiet" id="btn-audio-reset" data-i18n="audio.resetapps"></button>
+                </div>
+                <p class="hint subtle" data-i18n="audio.resetapps.hint"></p>
               </div>
             </section>
 
