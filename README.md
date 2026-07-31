@@ -25,6 +25,20 @@
 
 **Both drivers stay installed. Switch whenever you like — no reinstalling drivers, no reboot, effective immediately.**
 
+If the device locks up, **Reset device now** does the equivalent of replugging the USB cable, and a global hotkey triggers the same thing. *Technical detail* expands to show the driver binding, live audio endpoints and problem codes. Phantom device cleanup, the activity log and the language setting all live on the Settings page.
+
+![Status page](assets/review_status.png)
+
+---
+
+## Audio
+
+System volume, microphone and every app's volume, all adjustable without opening Windows Settings. Switch the default output and input device from here, and each app is listed with its own icon so you can tell them apart at a glance. Switching driver mode often scrambles app volumes — **Reset app volumes** puts them all back to 100% in one click.
+
+![Audio page](assets/review_audio.png)
+
+---
+
 ## Install
 
 [Download `scarlett-guard.zip`](https://github.com/asd880921/scarlett-guard/releases/latest/download/scarlett-guard.zip), unzip it, then right-click `Scarlett Guard.exe` and **Run as administrator**. No Python needed.
@@ -48,34 +62,6 @@ This kind of driver failure is a common complaint among Windows users. Simply re
 >
 > This tool needs the official Focusrite driver to stay installed in order to switch back to Studio mode and use the official ASIO.
 > **Focusrite Audio Drivers** and **Focusrite Control 2** are two separate components. Even if you stay in Everyday mode indefinitely, neither adds background processes or system load.
-
----
-
-## Other features
-
-### 🧹 Phantom device cleanup
-
-After repeated mode switches or USB replugs, Windows can leave dead device nodes behind (ghost devices), which makes audio device names sprout numbers like `2-` or `3-`, and can even knock your default playback device off.
-
-Clear them out from the **Settings** page in one click.
-
-### 📝 Recent activity
-
-Every mode switch, device reset and cleanup is shown at the bottom of the main screen, and saved as **JSON Lines** for easy review and debugging.
-
-### 🔍 Technical detail
-
-The main screen has a collapsible technical panel with the current driver mode, device state and system probe results, for tracking problems down.
-
-### 🌐 Languages
-
-Supported:
-
-* 繁體中文
-* 简体中文
-* English
-
-Follows the Windows system language by default, and can be switched manually in Settings.
 
 ---
 
