@@ -150,7 +150,7 @@ window.I18N = (() => {
       'log.empty': '還沒有任何紀錄',
       'card.data': '設定與紀錄',
       'reset.sub.dailymode': '僅在錄音模式可用',
-      'update.available': '有新版本 v{version}',
+      'update.available': '發現新版本 v{version}',
       'update.tip': '開啟 v{version} 的下載頁',
     },
 
@@ -296,7 +296,7 @@ window.I18N = (() => {
       'log.empty': '还没有任何记录',
       'card.data': '设置与记录',
       'reset.sub.dailymode': '仅在录音模式可用',
-      'update.available': '有新版本 v{version}',
+      'update.available': '发现新版本 v{version}',
       'update.tip': '打开 v{version} 的下载页',
     },
 
@@ -447,7 +447,7 @@ window.I18N = (() => {
       'log.empty': 'Nothing logged yet',
       'card.data': 'Settings and log',
       'reset.sub.dailymode': 'Available in Studio mode only',
-      'update.available': 'Update available: v{version}',
+      'update.available': 'New version available: v{version}',
       'update.tip': 'Open the download page for v{version}',
     },
   };
