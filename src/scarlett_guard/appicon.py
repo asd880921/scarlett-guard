@@ -19,7 +19,13 @@ from ctypes import byref, c_int, c_void_p, wintypes
 _user32 = ctypes.windll.user32
 _gdi32 = ctypes.windll.gdi32
 _shell32 = ctypes.windll.shell32
-_version = ctypes.windll.version
+# 刻意不用 ctypes.windll.version（= WinDLL("version")，沒有副檔名）。
+# 打包後 PyInstaller 的 ctypes 執行期掛鉤會先檢查執行檔旁邊有沒有同名檔案，
+# Windows 路徑不分大小寫，"version" 會直接命中我們自己放在同一層的 VERSION
+# 版本檔（見 scarlett_guard.spec），於是它把那個純文字檔當成 DLL 載入、
+# 整個程式在 import 這支模組的當下就炸掉 —— 這在 dev 環境完全測不出來，
+# 只有打包後的 exe 才會發生。帶上副檔名之後就不會再撞到那個無副檔名的檔名。
+_version = ctypes.WinDLL("version.dll")
 _kernel32 = ctypes.windll.kernel32
 
 # 32px：混音器列高只有這麼多，取更大的只是浪費解碼時間與傳輸量
