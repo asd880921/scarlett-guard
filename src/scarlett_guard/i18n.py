@@ -3,14 +3,15 @@
 前端有自己的 ui/i18n.js；這裡負責的是 Python 產生、再送到 UI 或系統匣
 顯示的字串（錯誤訊息、系統通知、系統匣選單）。
 
-語言由 config 的 language 決定，"auto" 時跟隨系統地區設定。
+語言由 config 的 language 決定，"auto" 時跟隨系統地區設定；認不出來的地區
+一律回到 DEFAULT（英文）。
 """
 from __future__ import annotations
 
 import locale
 from typing import Any
 
-DEFAULT = "zh-Hant"
+DEFAULT = "en"
 SUPPORTED = ("zh-Hant", "zh-Hans", "en")
 
 CATALOG: dict[str, dict[str, str]] = {

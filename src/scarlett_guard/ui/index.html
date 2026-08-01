@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -288,6 +288,21 @@
 
             <!-- ============ 設定 ============ -->
             <section class="view" data-view="settings">
+              <!-- 語言排在最前面：它決定了這一頁其餘每一個字怎麼讀，
+                   找不到它的人也讀不懂用來找它的說明 -->
+              <div class="card">
+                <div class="card-head"><h3 data-i18n="card.language"></h3></div>
+                <div class="row">
+                  <div class="row-text">
+                    <strong data-i18n="lang.label"></strong>
+                    <span data-i18n="lang.label.sub"></span>
+                  </div>
+                  <div class="input-wrap">
+                    <select id="cfg-language"></select>
+                  </div>
+                </div>
+              </div>
+
               <div class="card">
                 <div class="card-head">
                   <h3 data-i18n="card.hotkey"></h3>
@@ -332,14 +347,6 @@
                     </div>
                     <div class="switch" id="sw-notify" role="switch" tabindex="0"
                          data-i18n-aria="beh.notify"><span class="knob"></span></div>
-                  </div>
-                  <div class="row">
-                    <div class="row-text">
-                      <strong data-i18n="lang.label"></strong>
-                    </div>
-                    <div class="input-wrap">
-                      <select id="cfg-language"></select>
-                    </div>
                   </div>
                 </div>
               </div>

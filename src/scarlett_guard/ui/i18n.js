@@ -34,6 +34,10 @@ window.I18N = (() => {
       'chip.online': '裝置在線',
       'driver.version': '驅動版本',
       'driver.date': '驅動日期',
+      'card.language': '語言',
+      'lang.label': '介面語言',
+      'lang.label.sub': '「自動」跟隨 Windows 的顯示語言；切換後立即生效，不需重新啟動',
+      'lang.auto': '自動（跟隨系統）',
       'card.hotkey': '全域熱鍵',
       'hotkey.combo': '按下時重置裝置',
       'hotkey.combo.sub': 'pynput 格式，例如 <ctrl>+<alt>+r · 僅在錄音模式有效',
@@ -44,8 +48,6 @@ window.I18N = (() => {
       'beh.closetray.sub': '保持常駐，熱鍵才會持續有效',
       'beh.notify': '重置後顯示系統通知',
       'beh.notify.sub': '由系統匣圖示發出',
-      'lang.label': '介面語言',
-      'lang.auto': '自動（跟隨系統）',
 
       'paths.config': '設定檔',
       'paths.history': '紀錄檔',
@@ -214,6 +216,10 @@ window.I18N = (() => {
       'chip.online': '设备在线',
       'driver.version': '驱动版本',
       'driver.date': '驱动日期',
+      'card.language': '语言',
+      'lang.label': '界面语言',
+      'lang.label.sub': '「自动」跟随 Windows 的显示语言；切换后立即生效，无需重启',
+      'lang.auto': '自动（跟随系统）',
       'card.hotkey': '全局热键',
       'hotkey.combo': '按下时重置设备',
       'hotkey.combo.sub': 'pynput 格式，例如 <ctrl>+<alt>+r · 仅在录音模式有效',
@@ -224,8 +230,6 @@ window.I18N = (() => {
       'beh.closetray.sub': '保持常驻，热键才会持续有效',
       'beh.notify': '重置后显示系统通知',
       'beh.notify.sub': '由托盘图标发出',
-      'lang.label': '界面语言',
-      'lang.auto': '自动（跟随系统）',
 
       'paths.config': '配置文件',
       'paths.history': '记录文件',
@@ -394,6 +398,10 @@ window.I18N = (() => {
       'chip.online': 'Device online',
       'driver.version': 'Driver version',
       'driver.date': 'Driver date',
+      'card.language': 'Language',
+      'lang.label': 'Interface language',
+      'lang.label.sub': 'Auto follows the Windows display language · applies instantly, no restart',
+      'lang.auto': 'Auto (follow system)',
       'card.hotkey': 'Global hotkey',
       'hotkey.combo': 'Resets the device when pressed',
       'hotkey.combo.sub': 'pynput syntax, e.g. <ctrl>+<alt>+r · Studio mode only',
@@ -404,8 +412,6 @@ window.I18N = (() => {
       'beh.closetray.sub': 'Stays resident so the hotkey keeps working',
       'beh.notify': 'System notification after reset',
       'beh.notify.sub': 'Raised by the tray icon',
-      'lang.label': 'Interface language',
-      'lang.auto': 'Auto (follow system)',
 
       'paths.config': 'Config file',
       'paths.history': 'History file',
@@ -558,7 +564,7 @@ window.I18N = (() => {
     { code: 'en', label: 'English' },
   ];
 
-  let current = 'zh-Hant';
+  let current = 'en';
 
   function resolve(code) {
     if (code && code !== 'auto' && CATALOG[code]) return code;
